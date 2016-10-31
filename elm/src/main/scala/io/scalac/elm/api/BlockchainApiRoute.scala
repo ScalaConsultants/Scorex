@@ -27,7 +27,7 @@ class BlockchainApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(impli
     Marshaller.StringMarshaller.wrap(MediaTypes.`application/json`)(_.spaces4)
 
   override lazy val route: Route = pathPrefix("blockchain") {
-    blocks
+    blocks ~ block
   }
 
   @Path("/blocks")
