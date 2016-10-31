@@ -1,6 +1,6 @@
 package io.scalac.elm.api
 
-import javax.ws.rs.{Path, QueryParam}
+import javax.ws.rs.{Path, Produces, QueryParam}
 
 import akka.actor.{ActorRef, ActorRefFactory}
 import akka.http.scaladsl.server.Route
@@ -25,11 +25,12 @@ class WalletApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(implicit 
   import context.dispatcher
 
   override lazy val route: Route = pathPrefix("wallet") {
-    payment ~ address ~ funds
+    payment ~ address ~ funds ~ coinage
   }
 
   @Path("/payment")
   @ApiOperation(value = "Make payment", httpMethod = "GET")
+  @Produces(Array("text/plain"))
   @ApiImplicitParams(Array(
     new ApiImplicitParam(name = "address", required = true, dataType = "string", paramType = "query", value = "XxYyZz"),
     new ApiImplicitParam(name = "amount", required = true, dataType = "integer", paramType = "query", value = "1000"),
@@ -57,6 +58,7 @@ class WalletApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(implicit 
 
   @Path("/address")
   @ApiOperation(value = "Get this node's address", httpMethod = "GET")
+  @Produces(Array("text/plain"))
   @ApiResponses(Array(
     new ApiResponse(code = 200, message = "base58 encoded address")
   ))
@@ -70,6 +72,7 @@ class WalletApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(implicit 
 
   @Path("/funds")
   @ApiOperation(value = "Get this node's funds", httpMethod = "GET")
+  @Produces(Array("text/plain"))
   @ApiResponses(Array(
     new ApiResponse(code = 200, message = "0")
   ))
@@ -81,6 +84,7 @@ class WalletApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(implicit 
 
   @Path("/coinage")
   @ApiOperation(value = "Get this node's accumulated coin-age", httpMethod = "GET")
+  @Produces(Array("text/plain"))
   @ApiResponses(Array(
     new ApiResponse(code = 200, message = "0")
   ))
