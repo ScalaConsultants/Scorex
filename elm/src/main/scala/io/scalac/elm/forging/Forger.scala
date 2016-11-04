@@ -26,17 +26,18 @@ class Forger(viewHolderRef: ActorRef) extends Actor with ScorexLogging {
   import context.dispatcher
 
   //FIXME: should be part of consensus
-  val TransactionsInBlock = 100
+  val MaxTransactionsInBlock = 100
+  val MinTransactionsInBlock = 1
 
   //FIXME: should be part of consensus and dynamic
-  val TargetScore = BigInt(1000) * 100 //100 coin-seconds
+  val TargetScore = BigInt(10) //10 coin-seconds
 
   private val hash = FastCryptographicHash
 
 
   val InterBlocksDelay = 15
   //in seconds
-  val blockGenerationDelay = 500.millisecond
+  val blockGenerationDelay = 2.seconds
 
   override def preStart(): Unit = {
     context.system.scheduler.scheduleOnce(1.second)(self ! Forge)
@@ -48,18 +49,21 @@ class Forger(viewHolderRef: ActorRef) extends Actor with ScorexLogging {
 
       if (wallet.accumulatedCoinAge >= TargetScore) {
 
-        val lastBlock = history.lastBlock
-        val generators: Set[PublicKey25519Proposition] = wallet.publicKeys
-        lazy val toInclude = state.filterValid(memPool.take(TransactionsInBlock)._1.toSeq)
+        val toInclude = state.filterValid(memPool.getAll.sortBy(_.fee)(Ordering[Long].reverse).take(MaxTransactionsInBlock))
 
-        val generatedBlocks = generators.map { generator =>
-          val unsigned = ElmBlock(lastBlock.id, System.currentTimeMillis(), Array(), generator, toInclude)
-          val signature = PrivateKey25519Companion.sign(wallet.secret, unsigned.companion.bytes(unsigned))
-          val signedBlock = unsigned.copy(generationSignature = signature.signature)
-          log.info(s"Generated new block: ${signedBlock.jsonNoTxs.noSpaces}")
-          LocallyGeneratedModifier[PublicKey25519Proposition, ElmTransaction, ElmBlock](signedBlock)
+        if (toInclude.size >= MinTransactionsInBlock) {
+          val lastBlock = history.lastBlock
+          val generators: Set[PublicKey25519Proposition] = wallet.publicKeys
+
+          val generatedBlocks = generators.map { generator =>
+            val unsigned = ElmBlock(lastBlock.id, System.currentTimeMillis(), Array(), generator, toInclude)
+            val signature = PrivateKey25519Companion.sign(wallet.secret, unsigned.companion.bytes(unsigned))
+            val signedBlock = unsigned.copy(generationSignature = signature.signature)
+            log.info(s"Generated new block: ${signedBlock.jsonNoTxs.noSpaces}")
+            LocallyGeneratedModifier[PublicKey25519Proposition, ElmTransaction, ElmBlock](signedBlock)
+          }
+          generatedBlocks.foreach(localModifier => viewHolderRef ! localModifier)
         }
-        generatedBlocks.foreach(localModifier => viewHolderRef ! localModifier)
       }
       context.system.scheduler.scheduleOnce(blockGenerationDelay)(self ! Forge)
 

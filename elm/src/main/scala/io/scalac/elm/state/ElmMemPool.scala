@@ -54,7 +54,12 @@ class ElmMemPool extends MemoryPool[ElmTransaction, ElmMemPool] {
     }.keySet.map(_.array).toSeq
   }
 
-  override def getAll(ids: Seq[ModifierId]): Seq[ElmTransaction] = unconfTxs.values.toSeq
+  override def getAll(ids: Seq[ModifierId]): Seq[ElmTransaction] = {
+    val idSet = ids.map(_.key).toSet
+    unconfTxs.filter(kv => idSet(kv._1)).values.toSeq
+  }
+
+  def getAll: Seq[ElmTransaction] = unconfTxs.values.toSeq
 
   override def companion: NodeViewComponentCompanion = ???
 

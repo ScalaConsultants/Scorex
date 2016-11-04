@@ -5,6 +5,7 @@ import io.scalac.elm.api.{BlockchainApiRoute, WalletApiRoute}
 import io.scalac.elm.config.{AppConfig, AppInfo}
 import io.scalac.elm.consensus.{ElmSyncInfo, ElmSyncInfoSpec}
 import io.scalac.elm.core.{ElmLocalInterface, ElmNodeViewHolder}
+import io.scalac.elm.forging.Forger
 import io.scalac.elm.state.ElmWallet
 import io.scalac.elm.transaction.{ElmBlock, ElmTransaction}
 import scorex.core.api.http._
@@ -49,6 +50,8 @@ class ElmApp(appConfig: AppConfig) extends {
     typeOf[WalletApiRoute],
     typeOf[BlockchainApiRoute]
   )
+
+  val forger = actorSystem.actorOf(Props(classOf[Forger], nodeViewHolderRef))
 }
 
 object ElmApp extends App with ScorexLogging {

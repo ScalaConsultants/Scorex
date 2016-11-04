@@ -23,7 +23,7 @@ object ElmWallet {
   case class TimedTxOutput(out: TxOutput, timestamp: Long)
 
   //TODO: config
-  val baseFee = 100L
+  val baseFee = 10L
 }
 
 
