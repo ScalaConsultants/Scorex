@@ -11,6 +11,8 @@ import scorex.core.transaction.box.proposition.PublicKey25519Proposition
 
 object ElmTransaction extends Serialization[ElmTransaction] {
   val codec = getCodec
+
+  val ModifierTypeId = 2: Byte
 }
 
 case class ElmTransaction(inputs: Seq[TxInput], outputs: Seq[TxOutput], fee: Long, timestamp: Long)

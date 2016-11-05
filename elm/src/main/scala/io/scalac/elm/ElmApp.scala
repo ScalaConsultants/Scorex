@@ -21,7 +21,7 @@ class ElmApp(appConfig: AppConfig) extends {
   override val applicationName = AppInfo.name
   override val appVersion = AppInfo.appVersion
   override val settings = appConfig.settings
-  override protected val additionalMessageSpecs = Nil
+  override protected val additionalMessageSpecs = Seq(ElmSyncInfoSpec)
 
 } with Application {
 
@@ -30,12 +30,11 @@ class ElmApp(appConfig: AppConfig) extends {
   override type PMOD = ElmBlock
   override type NVHT = ElmNodeViewHolder
 
-  override val wallet = ElmWallet() // ???
   override val nodeViewHolderRef = actorSystem.actorOf(Props(classOf[ElmNodeViewHolder], appConfig))
+  override val localInterface = actorSystem.actorOf(Props(classOf[ElmLocalInterface], nodeViewHolderRef))
   override val nodeViewSynchronizer = actorSystem.actorOf(
     Props(classOf[NodeViewSynchronizer[P, TX, ElmSyncInfo, ElmSyncInfoSpec.type]],
-      networkController, nodeViewHolderRef, ElmSyncInfoSpec))
-  override val localInterface = actorSystem.actorOf(Props(classOf[ElmLocalInterface], nodeViewHolderRef))
+      networkController, nodeViewHolderRef, localInterface, ElmSyncInfoSpec))
 
   override val apiRoutes = Seq(
     UtilsApiRoute(settings),

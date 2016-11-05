@@ -3,6 +3,7 @@ package io.scalac.elm.transaction
 import io.circe._
 import io.circe.generic.auto._
 import io.scalac.elm.serialization.Serialization
+import scorex.core.NodeViewModifier.ModifierTypeId
 import scorex.core.NodeViewModifierCompanion
 import scorex.core.block.Block
 import scorex.core.crypto.hash.FastCryptographicHash
@@ -12,6 +13,8 @@ import shapeless.{::, HNil}
 
 object ElmBlock extends Serialization[ElmBlock] {
   type GenerationSignature = Array[Byte]
+
+  val ModifierTypeId = 1: Byte
 
   val codec = getCodec
 }
@@ -45,4 +48,6 @@ case class ElmBlock(
   def jsonNoTxs: Json = ElmBlock.toJson(this.copy(txs = Nil))
 
   override lazy val blockFields: BlockFields = parentId :: timestamp :: version :: generationSignature :: generator :: txs :: HNil
+
+  override val modifierTypeId: ModifierTypeId = ElmBlock.ModifierTypeId
 }

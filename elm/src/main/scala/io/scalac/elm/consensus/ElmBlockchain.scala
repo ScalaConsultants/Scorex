@@ -20,6 +20,8 @@ case class ElmBlockchain(blockIds: Map[Height, BlockId] = Map(), blocks: Map[Byt
 
   import BlockChain.Score
 
+  def lastBlockId: BlockId = blockIds(height())
+
   override def isEmpty: Boolean = blocks.isEmpty
 
   override def blockById(blockId: BlockId): Option[ElmBlock] =
@@ -37,16 +39,6 @@ case class ElmBlockchain(blockIds: Map[Height, BlockId] = Map(), blocks: Map[Byt
       s"expected ${Base58.encode(parentId)}}"))
   }
 
-  override def openSurface(): Seq[BlockId] = Seq(blocks.last._1.array)
-
-  override def continuation(from: Seq[BlockId], size: Int): Seq[ElmBlock] =
-    continuationIds(from, size).map(blockById).map(_.get)
-
-  override def continuationIds(from: Seq[BlockId], size: Int): Seq[BlockId] = {
-    require(from.size == 1)
-    blocks.dropWhile(t => t._1 != from.head.key).take(size).keys.toSeq.map(_.array)
-  }
-
   override def chainScore(): BigInt = blocks.values.map(score).sum
 
   override type NVCT = ElmBlockchain
@@ -54,11 +46,12 @@ case class ElmBlockchain(blockIds: Map[Height, BlockId] = Map(), blocks: Map[Byt
   override def companion: NodeViewComponentCompanion = ???
 
   // FIXME: MinimalState is needed to calculate score efficiently (but also need the timestamps)
+  // FIXME: what about genesis block (height = 2)?
   override def score(block: ElmBlock): Score = {
-    val now = System.currentTimeMillis()
-    val allTxs = blocks.values.flatMap(_.transactions.get)
+    val now = System.currentTimeMillis() //hmmm, synchronization?
+    val allTxs = blocks.values.flatMap(_.transactions.getOrElse(Nil))
     val allOuts = allTxs.flatMap(tx => tx.outputs.map(tx.timestamp -> _)).map(tOut => tOut._2.id.key -> tOut).toMap
-    val coinstakeIns = block.transactions.get.head.inputs
+    val coinstakeIns = block.transactions.getOrElse(Nil).headOption.map(_.inputs).getOrElse(Nil)
     coinstakeIns.flatMap(in => allOuts.get(in.closedBoxId)).map { case (t, out) => (now - t) * out.value }.sum
   }
 
@@ -78,13 +71,22 @@ case class ElmBlockchain(blockIds: Map[Height, BlockId] = Map(), blocks: Map[Byt
   override def children(blockId: BlockId): Seq[ElmBlock] =
     heightOf(blockId).map(_ + 1).flatMap(blockAt).toSeq
 
-  override def syncInfo: ElmSyncInfo = ElmSyncInfo(chainScore())
-
+  //FIXME: Not sure whether to use block IDs or score
   override def compare(other: ElmSyncInfo): HistoryComparisonResult.Value = {
-    val local = syncInfo.score
-    val remote = other.score
-    if (local < remote) HistoryComparisonResult.Older
-    else if(local == remote) HistoryComparisonResult.Equal
-    else HistoryComparisonResult.Younger
+    import HistoryComparisonResult._
+    log.info(s"Comparing blockchains:" +
+      s"\n\tlocal:  score=${chainScore()}, lastblockId=${Base58.encode(lastBlockId)}" +
+      s"\n\tremote: score=${other.score}, lastblockId=${Base58.encode(other.lastBlockId)}")
+    blocks.get(other.lastBlockId).map { block =>
+      if (block.id.key == lastBlockId.key) Equal else Younger
+    }.getOrElse(Older)
+//    val local = chainScore()
+//    val remote = other.score
+//    if (local < remote) Older
+//    else if (local == remote) Equal
+//    else Younger
   }
+
+  override def syncInfo(answer: Boolean): ElmSyncInfo =
+    ElmSyncInfo(answer, lastBlockId, chainScore())
 }

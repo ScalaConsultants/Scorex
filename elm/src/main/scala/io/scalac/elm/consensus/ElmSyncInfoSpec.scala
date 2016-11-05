@@ -1,18 +1,20 @@
 package io.scalac.elm.consensus
 
-import scorex.core.consensus.{BlockChain, SyncInfo}
+import io.scalac.elm.serialization.ByteSerialization
+import io.scalac.elm.transaction.ElmBlock
+import scorex.core.NodeViewModifier.{ModifierId, ModifierTypeId}
+import scorex.core.consensus.BlockChain.Score
+import scorex.core.consensus.SyncInfo
 import scorex.core.network.message.SyncInfoSpec
 
-import scala.util.Try
+//FIXME: Not sure whether to use block IDs or score
+case class ElmSyncInfo(answer: Boolean, lastBlockId: ModifierId, score: Score) extends SyncInfo {
+  override def bytes: Array[Byte] = ElmSyncInfo.bytes(this)
 
-case class ElmSyncInfo(score: BlockChain.Score) extends SyncInfo {
-  override def bytes: Array[Byte] = score.toByteArray
+  override def startingPoints: Seq[(ModifierTypeId, ModifierId)] =
+    Seq(ElmBlock.ModifierTypeId -> lastBlockId)
 }
 
-object ElmSyncInfo {
-  def parse(bytes: Array[Byte]): Try[ElmSyncInfo] = Try {
-    ElmSyncInfo(BigInt(bytes))
-  }
-}
+object ElmSyncInfo extends ByteSerialization[ElmSyncInfo]
 
 object ElmSyncInfoSpec extends SyncInfoSpec[ElmSyncInfo](ElmSyncInfo.parse)

@@ -57,7 +57,7 @@ class Forger(viewHolderRef: ActorRef) extends Actor with ScorexLogging {
 
           val generatedBlocks = generators.map { generator =>
             val unsigned = ElmBlock(lastBlock.id, System.currentTimeMillis(), Array(), generator, toInclude)
-            val signature = PrivateKey25519Companion.sign(wallet.secret, unsigned.companion.bytes(unsigned))
+            val signature = PrivateKey25519Companion.sign(wallet.secret, unsigned.bytes)
             val signedBlock = unsigned.copy(generationSignature = signature.signature)
             log.info(s"Generated new block: ${signedBlock.jsonNoTxs.noSpaces}")
             LocallyGeneratedModifier[PublicKey25519Proposition, ElmTransaction, ElmBlock](signedBlock)
