@@ -4,7 +4,6 @@ import io.scalac.elm.transaction.{ElmBlock, ElmTransaction, TxOutput}
 import io.scalac.elm.util.ByteKey
 import scorex.core.NodeViewComponentCompanion
 import scorex.core.block.StateChanges
-import scorex.core.transaction.TransactionChanges
 import scorex.core.transaction.box.proposition.PublicKey25519Proposition
 import scorex.core.transaction.state.MinimalState
 import scorex.core.transaction.state.MinimalState.VersionTag
@@ -29,9 +28,6 @@ case class ElmMinState(storage: Map[ByteKey, TxOutput] = Map())
     s"SimpleState at ${Base58.encode(version)}\n" + storage.keySet.flatMap(k => storage.get(k)).mkString("\n  ")
   }
 
-  override def boxOf(p: PublicKey25519Proposition): Seq[TxOutput] =
-    storage.values.filter(b => b.proposition.address == p.address).toSeq
-
   override def closedBox(boxId: Array[Byte]): Option[TxOutput] =
     storage.get(boxId)
 
@@ -41,7 +37,7 @@ case class ElmMinState(storage: Map[ByteKey, TxOutput] = Map())
   }
 
   override def applyChanges(change: StateChanges[PublicKey25519Proposition, TxOutput], newVersion: VersionTag): Try[ElmMinState] = Try {
-    val toRemove = change.toRemove.map(_.id.key)
+    val toRemove = change.boxIdsToRemove.map(_.key)
     val toAppend = change.toAppend.map(out => out.id.key -> out)
     ElmMinState(storage -- toRemove ++ toAppend)
   }
@@ -73,18 +69,18 @@ case class ElmMinState(storage: Map[ByteKey, TxOutput] = Map())
   } .filter(identity).map(_ => ())
     .recoverWith{case _ => Failure(new Exception(s"Block failed validation"))}
 
-  override def changes(tx: ElmTransaction): Try[TransactionChanges[PublicKey25519Proposition, TxOutput]] =  Try {
-    val toRemove = tx.inputs.flatMap(in => storage.get(in.closedBoxId)).toSet
-    val toAppend = tx.outputs.toSet
-    TransactionChanges(toRemove, toAppend, tx.fee)
-  }
-
   override def changes(block: ElmBlock): Try[StateChanges[PublicKey25519Proposition, TxOutput]] = Try {
-    val txChanges = block.transactions.get.map(changes).toSet
-    val (toRemove, toAppend) = txChanges.map(ch => ch.get.toRemove -> ch.get.toAppend).unzip
+    val (toRemove, toAppend) = block.transactions.getOrElse(Nil).map { tx =>
+      val txToRemove = tx.inputs.map(_.closedBoxId).toSet
+      val txToAppend = tx.outputs.toSet
+      txToRemove -> txToAppend
+    }.toSet.unzip
     StateChanges(toRemove.flatten, toAppend.flatten)
   }
 
   // Not used
   override def version: VersionTag = ElmMinState.EmptyVersion
+
+  override def boxesOf(proposition: PublicKey25519Proposition): Seq[TxOutput] =
+    storage.values.filter(_.proposition.address == proposition.address).toSeq
 }

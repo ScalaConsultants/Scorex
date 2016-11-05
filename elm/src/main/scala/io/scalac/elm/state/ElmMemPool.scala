@@ -23,7 +23,7 @@ class ElmMemPool extends MemoryPool[ElmTransaction, ElmMemPool] {
 
   override def filter(tx: ElmTransaction): ElmMemPool = filter(Seq(tx))
 
-  override def filter(txs: Iterable[ElmTransaction]): ElmMemPool = {
+  override def filter(txs: Seq[ElmTransaction]): ElmMemPool = {
     txs.foreach(tx => unconfTxs.remove(tx.id))
     this
   }
@@ -41,9 +41,8 @@ class ElmMemPool extends MemoryPool[ElmTransaction, ElmMemPool] {
     putWithoutCheck(txs)
   }
 
-  override def take(limit: Int): (Iterable[ElmTransaction], ElmMemPool) = {
-    (unconfTxs.keys.take(limit).flatMap(k => unconfTxs.get(k)), this)
-  }
+  override def take(limit: Int): Iterable[ElmTransaction] =
+    unconfTxs.keys.take(limit).flatMap(k => unconfTxs.get(k))
 
   override def remove(tx: ElmTransaction): ElmMemPool = filter(tx)
 

@@ -17,4 +17,8 @@ class ElmLocalInterface(override val viewHolderRef: ActorRef)
   override protected def onSuccessfulTransaction(tx: ElmTransaction): Unit = ()
 
   override protected def onSuccessfulModification(mod: ElmBlock): Unit = ()
+
+  override protected def onNoBetterNeighbour(): Unit = ()
+
+  override protected def onBetterNeighbourAppeared(): Unit = ()
 }

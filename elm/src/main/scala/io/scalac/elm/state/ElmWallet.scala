@@ -1,9 +1,10 @@
 package io.scalac.elm.state
 
 import io.scalac.elm.state.ElmWallet._
-import io.scalac.elm.transaction.{ElmTransaction, TxInput, TxOutput}
+import io.scalac.elm.transaction.{ElmBlock, ElmTransaction, TxInput, TxOutput}
 import io.scalac.elm.util._
 import scorex.core.NodeViewComponentCompanion
+import scorex.core.transaction.box.Box
 import scorex.core.transaction.box.proposition.Constants25519.PrivKeyLength
 import scorex.core.transaction.box.proposition.PublicKey25519Proposition
 import scorex.core.transaction.proof.Signature25519
@@ -26,7 +27,6 @@ object ElmWallet {
   val baseFee = 10L
 }
 
-
 /**
   *
   * @param secret key pair
@@ -36,7 +36,7 @@ object ElmWallet {
 case class ElmWallet(secret: PrivateKey25519 = generateSecret(),
                      chainTxOutputs: Map[ByteKey, TimedTxOutput] = Map(),
                      currentBalance: Long = 0)
-  extends Wallet[PublicKey25519Proposition, ElmTransaction, ElmWallet] {
+  extends Wallet[PublicKey25519Proposition, ElmTransaction, ElmBlock, ElmWallet] {
 
   override type S = PrivateKey25519
   override type PI = PublicKey25519Proposition
@@ -60,27 +60,31 @@ case class ElmWallet(secret: PrivateKey25519 = generateSecret(),
 
   override def publicKeys: Set[PublicKey25519Proposition] = Set(secret.publicImage)
 
-  override def scan(tx: ElmTransaction, offchain: Boolean): ElmWallet = {
+  override def scanOffchain(tx: ElmTransaction): ElmWallet = {
+    val outs = for {
+      txIn <- tx.inputs
+      txOut <- chainTxOutputs.get(txIn.closedBoxId)
+    } yield txOut.out
 
-    if (offchain) {
-      // reduce balance by relevant inputs
+    val sum = outs.map(_.value).sum
+    val outIds = outs.map(_.id)
 
-      val outs = for {
-        txIn <- tx.inputs
-        txOut <- chainTxOutputs.get(txIn.closedBoxId)
-      } yield txOut.out
+    val reducedChainTxOuts = outIds.foldLeft(chainTxOutputs)((m, k) => m - k)
 
-      val sum = outs.map(_.value).sum
-      val outIds = outs.map(_.id)
+    //TODO how to restore balance when transactions are forgotten?
+    ElmWallet(secret, reducedChainTxOuts, currentBalance - sum)
+  }
 
-      val reducedChainTxOuts = outIds.foldLeft(chainTxOutputs)((m, k) => m - k)
+  override def scanOffchain(txs: Seq[ElmTransaction]): ElmWallet =
+    txs.foldLeft(this)((w, tx) => w.scanOffchain(tx))
 
-      //TODO how to restore balance when transactions are forgotten?
-      ElmWallet(secret, reducedChainTxOuts, currentBalance - sum)
+  override def historyTransactions: Seq[WalletTransaction[PublicKey25519Proposition, ElmTransaction]] = ???
 
-    } else {
-      // increase balance by confirmed outputs
+  override def scanPersistent(modifier: ElmBlock): ElmWallet = {
+    // increase balance by confirmed outputs
+    val transactions = modifier.transactions.getOrElse(Nil)
 
+    transactions.foldLeft(this) { (w, tx) =>
       val outs = tx.outputs.filter(_.proposition.pubKeyBytes.key == pubKeyBytes)
       val increasedOutputs = outs.foldLeft(chainTxOutputs)((m, o) => m + (o.id.key -> TimedTxOutput(o, tx.timestamp)))
       val sum = outs.map(_.value).sum
@@ -89,16 +93,9 @@ case class ElmWallet(secret: PrivateKey25519 = generateSecret(),
     }
   }
 
-  override def historyTransactions: Seq[WalletTransaction[PublicKey25519Proposition, ElmTransaction]] = ???
-
-  override def historyBoxes: Seq[WalletBox[PublicKey25519Proposition]] =
-    Seq()
-
-  override def bulkScan(txs: Seq[ElmTransaction], offchain: Boolean): ElmWallet =
-    txs.foldLeft(this) { case(wallet, tx) => wallet.scan(tx, offchain)}
-
-
   override def companion: NodeViewComponentCompanion = ???
+
+  override def boxes(): Seq[WalletBox[PublicKey25519Proposition, _ <: Box[PublicKey25519Proposition]]] = ???
 
   def accumulatedCoinAge: BigInt =
     chainTxOutputs.values.map(coinAge(System.currentTimeMillis)).sum
