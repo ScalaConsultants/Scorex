@@ -49,7 +49,9 @@ class Forger(viewHolderRef: ActorRef) extends Actor with ScorexLogging {
 
       if (wallet.accumulatedCoinAge >= TargetScore) {
 
+        log.info(s"MemPool has ${memPool.getAll.size} transactions")
         val toInclude = state.filterValid(memPool.getAll.sortBy(_.fee)(Ordering[Long].reverse).take(MaxTransactionsInBlock))
+        log.info(s"Including ${toInclude.size} transactions")
 
         if (toInclude.size >= MinTransactionsInBlock) {
           val lastBlock = history.lastBlock

@@ -77,9 +77,11 @@ case class ElmBlockchain(blockIds: Map[Height, BlockId] = Map(), blocks: Map[Byt
     log.info(s"Comparing blockchains:" +
       s"\n\tlocal:  score=${chainScore()}, lastblockId=${Base58.encode(lastBlockId)}" +
       s"\n\tremote: score=${other.score}, lastblockId=${Base58.encode(other.lastBlockId)}")
-    blocks.get(other.lastBlockId).map { block =>
+    val result = blocks.get(other.lastBlockId).map { block =>
       if (block.id.key == lastBlockId.key) Equal else Younger
     }.getOrElse(Older)
+    log.info("Comparison result: " + result)
+    result
 //    val local = chainScore()
 //    val remote = other.score
 //    if (local < remote) Older
