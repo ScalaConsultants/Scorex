@@ -34,7 +34,7 @@ case class ElmBlock(
 
   override def companion: NodeViewModifierCompanion[ElmBlock] = ElmBlock
 
-  override def id: BlockId = FastCryptographicHash(ElmBlock.bytes(this))
+  override lazy val id: BlockId = FastCryptographicHash(ElmBlock.bytes(this))
 
   override type M = ElmBlock
 
