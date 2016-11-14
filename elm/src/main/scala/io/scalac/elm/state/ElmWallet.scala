@@ -118,7 +118,7 @@ case class ElmWallet(secret: PrivateKey25519 = generateSecret(),
         val signature = Signature25519(Curve25519.sign(secret.privKeyBytes, out.bytes))
         TxInput(out.id, signature)
       }
-      val change = TxOutput(foundSum - requiredAmount, to)
+      val change = TxOutput(foundSum - requiredAmount, secret.publicImage)
       val toRecipient = TxOutput(amount, to)
       val outputs = if (change.value > 0) List(toRecipient, change) else List(toRecipient)
       Some(ElmTransaction(inputs, outputs, fee, currentTime))
