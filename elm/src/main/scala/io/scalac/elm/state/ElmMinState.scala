@@ -51,9 +51,9 @@ case class ElmMinState(storage: Map[ByteKey, TxOutput] = Map())
     val outputSum = tx.outputs.map(_.value).sum + tx.fee
     val addsUp = inputSum == outputSum
 
-    val positiveOuts = tx.outputs.forall(_.value > 0)
+    lazy val positiveOuts = tx.outputs.forall(_.value > 0)
 
-    val signed = tx.inputs.forall { in =>
+    lazy val signed = tx.inputs.forall { in =>
       val out = storage.get(in.closedBoxId)
       out.map(o => Curve25519.verify(in.boxKey.signature, o.bytes, o.proposition.pubKeyBytes)).exists(identity)
     }
