@@ -49,6 +49,7 @@ case class ElmMinState(storage: Map[ByteKey, TxOutput] = Map())
   override def validate(tx: ElmTransaction): Try[Unit] = Try {
     val inputSum = tx.inputs.flatMap(in => storage.get(in.closedBoxId)).map(_.value).sum
     val outputSum = tx.outputs.map(_.value).sum + tx.fee
+
     val addsUp = inputSum == outputSum
 
     lazy val positiveOuts = tx.outputs.forall(_.value > 0)
@@ -58,7 +59,13 @@ case class ElmMinState(storage: Map[ByteKey, TxOutput] = Map())
       out.map(o => Curve25519.verify(in.boxKey.signature, o.bytes, o.proposition.pubKeyBytes)).exists(identity)
     }
 
-    addsUp && positiveOuts && signed
+    val result = addsUp && positiveOuts && signed
+
+    if (!result) {
+      log.warn(s"Transaction ${tx.id.base58} did not validate: addsUp==$addsUp, positiveOuts==$positiveOuts, signed==$signed")
+    }
+
+    result
   } .filter(identity).map(_ => ())
     .recoverWith{case _ => Failure(new Exception(s"Transaction failed validation"))}
 
@@ -75,6 +82,7 @@ case class ElmMinState(storage: Map[ByteKey, TxOutput] = Map())
       val txToAppend = tx.outputs.toSet
       txToRemove -> txToAppend
     }.toSet.unzip
+
     StateChanges(toRemove.flatten, toAppend.flatten)
   }
 

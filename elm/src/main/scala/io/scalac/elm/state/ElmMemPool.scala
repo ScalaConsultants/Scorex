@@ -46,11 +46,9 @@ class ElmMemPool extends MemoryPool[ElmTransaction, ElmMemPool] {
 
   override def remove(tx: ElmTransaction): ElmMemPool = filter(tx)
 
-  //get mempool transaction ids not presenting in ids
+  //get IDs from the argument that are not present in the MemPool
   override def notIn(ids: Seq[ModifierId]): Seq[ModifierId] = {
-    unconfTxs.filter { case (id, tx) =>
-      !ids.exists(_.key == id)
-    }.keySet.map(_.array).toSeq
+    ids.map(_.key).diff(unconfTxs.keys.toSeq).map(_.array)
   }
 
   override def getAll(ids: Seq[ModifierId]): Seq[ElmTransaction] = {

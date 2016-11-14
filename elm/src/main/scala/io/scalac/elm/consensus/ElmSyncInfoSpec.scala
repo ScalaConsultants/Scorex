@@ -1,6 +1,7 @@
 package io.scalac.elm.consensus
 
-import io.scalac.elm.serialization.ByteSerialization
+import io.circe.generic.auto._
+import io.scalac.elm.serialization.JsonSerialization
 import io.scalac.elm.transaction.ElmBlock
 import scorex.core.NodeViewModifier.{ModifierId, ModifierTypeId}
 import scorex.core.consensus.BlockChain.Score
@@ -15,6 +16,8 @@ case class ElmSyncInfo(answer: Boolean, lastBlockId: ModifierId, score: Score) e
     Seq(ElmBlock.ModifierTypeId -> lastBlockId)
 }
 
-object ElmSyncInfo extends ByteSerialization[ElmSyncInfo]
+object ElmSyncInfo extends JsonSerialization[ElmSyncInfo] {
+  val codec = getCodec
+}
 
 object ElmSyncInfoSpec extends SyncInfoSpec[ElmSyncInfo](ElmSyncInfo.parse)

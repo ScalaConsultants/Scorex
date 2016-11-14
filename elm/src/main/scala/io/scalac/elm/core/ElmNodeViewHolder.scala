@@ -6,6 +6,7 @@ import io.scalac.elm.state.{ElmMemPool, ElmMinState, ElmWallet}
 import io.scalac.elm.transaction._
 import io.scalac.elm.util._
 import scorex.core.NodeViewModifier.ModifierTypeId
+import scorex.core.transaction.Transaction
 import scorex.core.transaction.box.proposition.PublicKey25519Proposition
 import scorex.core.transaction.state.PrivateKey25519Companion
 import scorex.core.{NodeViewHolder, NodeViewModifier, NodeViewModifierCompanion}
@@ -23,7 +24,7 @@ class ElmNodeViewHolder(appConfig: AppConfig) extends NodeViewHolder[PublicKey25
   override lazy val modifierCompanions: Map[ModifierTypeId, NodeViewModifierCompanion[_ <: NodeViewModifier]] =
     Map(
       ElmBlock.ModifierTypeId -> ElmBlock,
-      ElmTransaction.ModifierTypeId -> ElmTransaction
+      Transaction.ModifierTypeId -> ElmTransaction
     )
 
   override def restoreState(): Option[(HIS, MS, VL, MP)] = None
@@ -42,7 +43,8 @@ class ElmNodeViewHolder(appConfig: AppConfig) extends NodeViewHolder[PublicKey25
       val initialAmount = appConfig.genesis.initialFunds
       // we generate a bunch of outputs because of coinage destruction problem
       // another way to approach this would be to retain age of coinstake change, but that would require outputs to be explicitly timestamped
-      val genesisTx = ElmTransaction(Nil, List.fill(initialAmount.toInt)(TxOutput(1, emptyWallet.secret.publicImage)), 0, System.currentTimeMillis)
+      val grains = 10
+      val genesisTx = ElmTransaction(Nil, List.fill(grains)(TxOutput(initialAmount / grains, emptyWallet.secret.publicImage)), 0, System.currentTimeMillis)
 
       val unsignedBlock: ElmBlock = ElmBlock(emptyBlock.id, 0L, Array(), generator, Seq(genesisTx))
       val signature = PrivateKey25519Companion.sign(emptyWallet.secret, unsignedBlock.bytes)
