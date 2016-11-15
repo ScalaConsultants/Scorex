@@ -8,8 +8,7 @@ import scorex.core.settings.Settings
 object AppConfig {
   case class Genesis(generate: Boolean, initialFunds: Long)
 
-  def load(): AppConfig = {
-    val root = ConfigFactory.load()
+  def load(root: Config = ConfigFactory.load()): AppConfig = {
     val elm = root.getConfig("elm")
 
     AppConfig(

@@ -16,10 +16,10 @@ import scorex.core.utils.ScorexLogging
 
 import scala.reflect.runtime.universe.typeOf
 
-class ElmApp(appConfig: AppConfig) extends {
+class ElmApp(appInfo: AppInfo, appConfig: AppConfig) extends {
 
-  override val applicationName = AppInfo.name
-  override val appVersion = AppInfo.appVersion
+  override val applicationName = appInfo.name
+  override val appVersion = appInfo.appVersion
   override val settings = appConfig.settings
   override protected val additionalMessageSpecs = Seq(ElmSyncInfoSpec)
 
@@ -54,6 +54,6 @@ class ElmApp(appConfig: AppConfig) extends {
 }
 
 object ElmApp extends App with ScorexLogging {
-  val elmApp = new ElmApp(AppConfig.load())
+  val elmApp = new ElmApp(AppInfo(), AppConfig.load())
   elmApp.run()
 }

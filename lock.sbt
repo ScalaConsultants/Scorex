@@ -18,7 +18,7 @@ dependencyOverrides in ThisBuild ++= Set(
   "com.fasterxml.jackson.module" % "jackson-module-jaxb-annotations" % "2.4.5",
   "com.fasterxml.jackson.module" % "jackson-module-scala_2.11" % "2.4.2",
   "com.github.mpilquist" % "simulacrum_2.11" % "0.8.0",
-  "com.github.swagger-akka-http" % "swagger-akka-http_2.11" % "0.7.2",
+  "com.github.swagger-akka-http" % "swagger-akka-http_2.11" % "0.7.3",
   "com.google.code.findbugs" % "annotations" % "2.0.1",
   "com.google.code.findbugs" % "jsr305" % "2.0.1",
   "com.google.guava" % "guava" % "19.0",
@@ -32,7 +32,7 @@ dependencyOverrides in ThisBuild ++= Set(
   "com.typesafe.akka" % "akka-actor_2.11" % "2.4.12",
   "com.typesafe.akka" % "akka-http-core_2.11" % "2.4.11",
   "com.typesafe.akka" % "akka-http-experimental_2.11" % "2.4.11",
-  "com.typesafe.akka" % "akka-http-spray-json-experimental_2.11" % "2.4.8",
+  "com.typesafe.akka" % "akka-http-spray-json-experimental_2.11" % "2.4.10",
   "com.typesafe.akka" % "akka-parsing_2.11" % "2.4.11",
   "com.typesafe.akka" % "akka-stream_2.11" % "2.4.11",
   "com.typesafe.akka" % "akka-testkit_2.11" % "2.4.12",
@@ -98,4 +98,4 @@ dependencyOverrides in ThisBuild ++= Set(
   "org.whispersystems" % "curve25519-java" % "0.2.5",
   "org.yaml" % "snakeyaml" % "1.12"
 )
-// LIBRARY_DEPENDENCIES_HASH e6ebb34032c87ea909db472e2f46b6d183e857a6
+// LIBRARY_DEPENDENCIES_HASH 76d35365c14d9a61cd352befbf830f8f53742427
