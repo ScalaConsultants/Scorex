@@ -28,11 +28,11 @@ trait JsonSerialization[T] {
   private implicit def encoder = codec._1
   private implicit def decoder = codec._2
 
-//  def bytes(m: T): Array[Byte] =
-//    toJson(m).noSpaces.getBytes(StandardCharsets.UTF_8)
-//
-//  def parse(bytes: Array[Byte]): Try[T] =
-//    parser.parse(new String(bytes, StandardCharsets.UTF_8)).toTry.flatMap(fromJson)
+  def bytes(m: T): Array[Byte] =
+    toJson(m).noSpaces.getBytes(StandardCharsets.UTF_8)
+
+  def parse(bytes: Array[Byte]): Try[T] =
+    parser.parse(new String(bytes, StandardCharsets.UTF_8)).toTry.flatMap(fromJson)
 
   def toJson(m: T): Json =
     m.asJson

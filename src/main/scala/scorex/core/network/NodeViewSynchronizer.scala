@@ -66,9 +66,20 @@ class NodeViewSynchronizer[P <: Proposition, TX <: Transaction[P], SI <: SyncInf
 
   private def sendModifierIfLocal[M <: NodeViewModifier](m: M, source: Option[ConnectedPeer]): Unit =
     if (source.isEmpty) {
-      val data = m.modifierTypeId -> Seq(m.id -> m.bytes).toMap
-      val msg = Message(ModifiersSpec, Right(data), None)
-    //  networkControllerRef ! SendToNetwork(msg, Broadcast) todo: uncomment, send only inv to equals
+      m.modifierTypeId match {
+        case typeId @ Transaction.ModifierTypeId =>
+          val data = typeId -> Seq(m.id)
+          val msg = Message(InvSpec, Right(data), None)
+
+          //TODO: Questions:
+          //TODO: - do we need to send only to equals?
+          //TODO: - is Broadcast the appropriate strategy?
+          //TODO: - if not, should we send this not only from local?
+          networkControllerRef ! SendToNetwork(msg, Broadcast)
+        case _ =>
+          //do nothing, SyncInfo messages already take care of propagating blocks
+      }
+
     }
 
   private def viewHolderEvents: Receive = {

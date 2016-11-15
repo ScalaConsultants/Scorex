@@ -2,7 +2,7 @@ package io.scalac.elm.transaction
 
 import io.circe._
 import io.circe.generic.auto._
-import io.scalac.elm.serialization.Serialization
+import io.scalac.elm.serialization.JsonSerialization
 import scorex.core.NodeViewModifier.ModifierTypeId
 import scorex.core.NodeViewModifierCompanion
 import scorex.core.block.Block
@@ -11,7 +11,7 @@ import scorex.core.transaction.box.proposition.PublicKey25519Proposition
 import shapeless.{::, HNil}
 
 
-object ElmBlock extends Serialization[ElmBlock] {
+object ElmBlock extends NodeViewModifierCompanion[ElmBlock] with JsonSerialization[ElmBlock] {
   type GenerationSignature = Array[Byte]
 
   val ModifierTypeId = 1: Byte

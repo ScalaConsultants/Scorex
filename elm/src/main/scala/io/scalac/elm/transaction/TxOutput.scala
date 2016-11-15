@@ -3,14 +3,20 @@ package io.scalac.elm.transaction
 import java.nio.charset.StandardCharsets
 import java.util.UUID
 
-import io.scalac.elm.serialization.ByteSerialization
+import io.circe.generic.auto._
+import io.scalac.elm.serialization.JsonSerialization
 import scorex.core.transaction.box.Box
 import scorex.core.transaction.box.proposition.PublicKey25519Proposition
 
-case class TxOutput(value: Long, proposition: PublicKey25519Proposition)
-  extends Box[PublicKey25519Proposition] with ByteSerialization[TxOutput] {
+object TxOutput extends JsonSerialization[TxOutput] {
+  val codec = getCodec
+}
 
-  val id = UUID.randomUUID().toString.getBytes(StandardCharsets.US_ASCII)
+case class TxOutput(
+  value: Long,
+  proposition: PublicKey25519Proposition,
+  id: Array[Byte] = UUID.randomUUID().toString.getBytes(StandardCharsets.US_ASCII))
+  extends Box[PublicKey25519Proposition] {
 
-  def bytes: Array[Byte] = bytes(this)
+  def bytes: Array[Byte] = TxOutput.bytes(this)
 }
