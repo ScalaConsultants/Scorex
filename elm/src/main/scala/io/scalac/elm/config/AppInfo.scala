@@ -3,10 +3,8 @@ package io.scalac.elm.config
 import scorex.core.app.ApplicationVersion
 
 
-object AppInfo {
-  //FIXME: take values from build file or config
-  val name = "elm"
-  val version = "1.0.0"
+//FIXME: take values from build file or config
+case class AppInfo(name: String = "elm", version: String = "1.0.0") {
 
   val appVersion = {
     //FIXME: catch exception, inform of the proper version format
