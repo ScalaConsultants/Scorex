@@ -2,7 +2,7 @@ package io.scalac.elm.forging
 
 import akka.actor.{Actor, ActorRef}
 import io.scalac.elm.config.AppConfig
-import io.scalac.elm.consensus.ElmBlockchain
+import io.scalac.elm.history.ElmBlocktree
 import io.scalac.elm.state.{ElmMemPool, ElmMinState, ElmWallet}
 import io.scalac.elm.transaction._
 import scorex.core.LocalInterface.LocallyGeneratedModifier
@@ -45,7 +45,7 @@ class Forger(viewHolderRef: ActorRef, appConfig: AppConfig) extends Actor with S
   }
 
   override def receive: Receive = {
-    case CurrentView(history: ElmBlockchain, state: ElmMinState, wallet: ElmWallet, memPool: ElmMemPool) =>
+    case CurrentView(history: ElmBlocktree, state: ElmMinState, wallet: ElmWallet, memPool: ElmMemPool) =>
       log.info("Trying to generate a new block, chain length: " + history.height())
 
       if (wallet.accumulatedCoinAge >= TargetScore) {

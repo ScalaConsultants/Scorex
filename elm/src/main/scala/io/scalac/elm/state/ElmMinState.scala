@@ -8,15 +8,10 @@ import scorex.core.transaction.box.proposition.PublicKey25519Proposition
 import scorex.core.transaction.state.MinimalState
 import scorex.core.transaction.state.MinimalState.VersionTag
 import scorex.core.utils.ScorexLogging
-import scorex.crypto.encode.Base58
 import scorex.crypto.signatures.Curve25519
 
 import scala.util.{Failure, Try}
 
-
-object ElmMinState {
-  val EmptyVersion: Array[Byte] = Array.fill(32)(0: Byte)
-}
 
 case class ElmMinState(storage: Map[ByteKey, TxOutput] = Map())
   extends ScorexLogging
@@ -24,12 +19,11 @@ case class ElmMinState(storage: Map[ByteKey, TxOutput] = Map())
 
   def isEmpty: Boolean = storage.isEmpty
 
-  override def toString: String = {
-    s"SimpleState at ${Base58.encode(version)}\n" + storage.keySet.flatMap(k => storage.get(k)).mkString("\n  ")
-  }
-
   override def closedBox(boxId: Array[Byte]): Option[TxOutput] =
     storage.get(boxId)
+
+  def get(outId: ByteKey): Option[TxOutput] =
+    storage.get(outId)
 
   override def rollbackTo(version: VersionTag): Try[ElmMinState] = {
     log.warn("Rollback is not implemented")
@@ -42,6 +36,7 @@ case class ElmMinState(storage: Map[ByteKey, TxOutput] = Map())
     ElmMinState(storage -- toRemove ++ toAppend)
   }
 
+  @deprecated("unnecessary")
   override def companion: NodeViewComponentCompanion = ???
 
   override type NVCT = ElmMinState
@@ -69,6 +64,7 @@ case class ElmMinState(storage: Map[ByteKey, TxOutput] = Map())
   } .filter(identity).map(_ => ())
     .recoverWith{case _ => Failure(new Exception(s"Transaction failed validation"))}
 
+  //TODO: Remove me
   def validateBlock(block: ElmBlock): Try[Unit] = Try {
     //validate against double spending, other block validations should be done at blockchain level
     val outputIds = block.transactions.toSeq.flatten.flatMap(_.inputs).map(_.closedBoxId.key)
@@ -86,8 +82,8 @@ case class ElmMinState(storage: Map[ByteKey, TxOutput] = Map())
     StateChanges(toRemove.flatten, toAppend.flatten)
   }
 
-  // Not used
-  override def version: VersionTag = ElmMinState.EmptyVersion
+  @deprecated("unnecessary")
+  override def version: VersionTag = ???
 
   override def boxesOf(proposition: PublicKey25519Proposition): Seq[TxOutput] =
     storage.values.filter(_.proposition.address == proposition.address).toSeq

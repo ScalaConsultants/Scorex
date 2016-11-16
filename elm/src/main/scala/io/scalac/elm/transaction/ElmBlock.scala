@@ -17,6 +17,12 @@ object ElmBlock extends NodeViewModifierCompanion[ElmBlock] with JsonSerializati
   val ModifierTypeId = 1: Byte
 
   val codec = getCodec
+
+  val zero: ElmBlock = {
+    val zeroSignature = Array.fill(32)(0.toByte)
+    val generator = PublicKey25519Proposition(zeroSignature)
+    ElmBlock(zeroSignature, 0L, zeroSignature, generator, Nil)
+  }
 }
 
 case class ElmBlock(
