@@ -3,7 +3,7 @@ package io.scalac.elm
 import akka.actor.Props
 import io.scalac.elm.api.{BlockchainApiRoute, WalletApiRoute}
 import io.scalac.elm.config.{AppConfig, AppInfo}
-import io.scalac.elm.consensus.{ElmSyncInfo, ElmSyncInfoSpec}
+import io.scalac.elm.history.{ElmSyncInfo, ElmSyncInfoSpec}
 import io.scalac.elm.core.{ElmLocalInterface, ElmNodeViewHolder}
 import io.scalac.elm.forging.Forger
 import io.scalac.elm.transaction.{ElmBlock, ElmTransaction}

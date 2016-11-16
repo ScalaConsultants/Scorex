@@ -9,7 +9,7 @@ import akka.http.scaladsl.server._
 import akka.pattern.ask
 import io.circe._
 import io.circe.syntax._
-import io.scalac.elm.consensus.ElmBlockchain
+import io.scalac.elm.history.ElmBlocktree
 import io.scalac.elm.util.ByteKey
 import io.swagger.annotations._
 import scorex.core.NodeViewHolder
@@ -35,10 +35,10 @@ class BlockchainApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(impli
   @ApiResponses(Array(
     new ApiResponse(code = 200, message = "list of block IDs ordered as in the blockchain")
   ))
-  def blocks = get {
+  def blocks: Route = get {
     path("blocks") {
       complete {
-        getBlockchain.map(_.blockIds.toList.sortBy(_._1).map(_._2.key.base58).asJson)
+        getBlockchain.map(_.mainChain.map(_.id.base58).asJson)
       }
     }
   }
@@ -52,7 +52,7 @@ class BlockchainApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(impli
     new ApiResponse(code = 200, message = "JSON representation of a block"),
     new ApiResponse(code = 404, message = "block not found")
   ))
-  def block = get {
+  def block: Route  = get {
     path("block" / Segment) { id =>
       rejectEmptyResponse {
         complete {
@@ -62,7 +62,6 @@ class BlockchainApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(impli
     }
   }
 
-  def getBlockchain =
-    nodeViewHolder.ask(NodeViewHolder.GetCurrentView).mapTo[CurrentView[ElmBlockchain, _, _, _]].map(_.history)
-
+  private def getBlockchain =
+    nodeViewHolder.ask(NodeViewHolder.GetCurrentView).mapTo[CurrentView[ElmBlocktree, _, _, _]].map(_.history)
 }
