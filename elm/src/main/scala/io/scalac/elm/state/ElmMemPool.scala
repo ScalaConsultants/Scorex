@@ -1,64 +1,81 @@
 package io.scalac.elm.state
 
-import io.scalac.elm.transaction.ElmTransaction
-import io.scalac.elm.util.ByteKey
+import cats.data.Xor
+import io.scalac.elm.state.ElmMemPool.TxValidationError
+import io.scalac.elm.transaction.{ElmBlock, ElmTransaction}
+import io.scalac.elm.util._
 import scorex.core.NodeViewComponentCompanion
 import scorex.core.NodeViewModifier.ModifierId
 import scorex.core.transaction.MemoryPool
 
-import scala.collection.concurrent.TrieMap
 import scala.util.Try
 
-class ElmMemPool extends MemoryPool[ElmTransaction, ElmMemPool] {
+object ElmMemPool {
+  case object TxValidationError extends Error
+}
 
-  private val unconfTxs: TrieMap[ByteKey, ElmTransaction] = TrieMap()
+case class ElmMemPool(offchainTxs: Map[ByteKey, ElmTransaction] = Map.empty) extends MemoryPool[ElmTransaction, ElmMemPool] {
 
-  //getters
-  override def getById(id: ModifierId): Option[ElmTransaction] = unconfTxs.get(id)
+  override type NVCT = ElmMemPool
 
-  override def filter(id: Array[Byte]): ElmMemPool = {
-    unconfTxs.remove(id)
-    this
-  }
+  /**
+    * Remove transactions which made it to the chain
+    */
+  def applyBlock(block: ElmBlock): ElmMemPool =
+    ElmMemPool(offchainTxs -- block.txs.drop(1).map(_.id.key))
 
-  override def filter(tx: ElmTransaction): ElmMemPool = filter(Seq(tx))
+  /**
+    * Add transaction to pool if it's valid
+    */
+  def applyTx(transaction: ElmTransaction, minState: ElmMinState): Error Xor ElmMemPool =
+    if (minState.isValid(transaction))
+      Xor.right(ElmMemPool(offchainTxs + (transaction.id.key -> transaction)))
+    else
+      Xor.left(TxValidationError)
 
-  override def filter(txs: Seq[ElmTransaction]): ElmMemPool = {
-    txs.foreach(tx => unconfTxs.remove(tx.id))
-    this
-  }
-
-  override def putWithoutCheck(txs: Iterable[ElmTransaction]): ElmMemPool = {
-    txs.foreach(tx => unconfTxs.put(tx.id, tx))
-    this
-  }
-
-  //modifiers
-  override def put(tx: ElmTransaction): Try[ElmMemPool] = put(Seq(tx))
-
-  override def put(txs: Iterable[ElmTransaction]): Try[ElmMemPool] = Try {
-    txs.foreach(tx => require(!unconfTxs.contains(tx.id)))
-    putWithoutCheck(txs)
-  }
-
-  override def take(limit: Int): Iterable[ElmTransaction] =
-    unconfTxs.keys.take(limit).flatMap(k => unconfTxs.get(k))
-
-  override def remove(tx: ElmTransaction): ElmMemPool = filter(tx)
-
-  //get IDs from the argument that are not present in the MemPool
+  /**
+    * get IDs from the argument that are not present in the MemPool
+    */
   override def notIn(ids: Seq[ModifierId]): Seq[ModifierId] = {
-    ids.map(_.key).diff(unconfTxs.keys.toSeq).map(_.array)
+    ids.map(_.key).diff(offchainTxs.keys.toSeq).map(_.array)
   }
 
   override def getAll(ids: Seq[ModifierId]): Seq[ElmTransaction] = {
     val idSet = ids.map(_.key).toSet
-    unconfTxs.filter(kv => idSet(kv._1)).values.toSeq
+    offchainTxs.filter(kv => idSet(kv._1)).values.toSeq
   }
 
-  def getAll: Seq[ElmTransaction] = unconfTxs.values.toSeq
+  def getAll: Seq[ElmTransaction] = offchainTxs.values.toSeq
 
+
+
+  @deprecated("unnecessary")
+  override def put(tx: ElmTransaction): Try[ElmMemPool] = ???
+
+  @deprecated("unnecessary")
+  override def getById(id: ModifierId): Option[ElmTransaction] = ???
+
+  @deprecated("unnecessary")
+  override def filter(id: Array[Byte]): ElmMemPool = ???
+
+  @deprecated("unnecessary")
+  override def filter(tx: ElmTransaction): ElmMemPool = filter(Seq(tx))
+
+  @deprecated("unnecessary")
+  override def filter(txs: Seq[ElmTransaction]): ElmMemPool = ???
+
+  @deprecated("unnecessary")
+  override def putWithoutCheck(txs: Iterable[ElmTransaction]): ElmMemPool = ???
+
+  @deprecated("unnecessary")
+  override def put(txs: Iterable[ElmTransaction]): Try[ElmMemPool] = ???
+
+  @deprecated("unnecessary")
+  override def take(limit: Int): Iterable[ElmTransaction] = ???
+
+  @deprecated("unnecessary")
+  override def remove(tx: ElmTransaction): ElmMemPool = ???
+
+  @deprecated("unnecessary")
   override def companion: NodeViewComponentCompanion = ???
-
-  override type NVCT = ElmMemPool
 }

@@ -16,7 +16,7 @@ case class TxOutput(
   value: Long,
   proposition: PublicKey25519Proposition,
   id: Array[Byte] = UUID.randomUUID().toString.getBytes(StandardCharsets.US_ASCII),
-  depth: Option[Int] = None
+  height: Option[Int] = None
 ) extends Box[PublicKey25519Proposition] {
 
   def bytes: Array[Byte] = TxOutput.bytes(this)
