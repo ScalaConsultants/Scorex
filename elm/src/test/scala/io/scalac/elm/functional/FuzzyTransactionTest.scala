@@ -54,13 +54,13 @@ class FuzzyTransactionTest extends FlatSpec with Matchers with BeforeAndAfterAll
     Http(uri).header("Accept", "text/plain").option(HttpOptions.readTimeout(1000)).asString.body.toInt
   } getOrElse (throw new IllegalStateException("Funds should be always accessible"))
 
-  private def makePayment(sender: TestElmApp, address: String, amount: Int, priority: Int) = Try {
+  private def makePayment(sender: TestElmApp, address: String, amount: Int, fee: Int) = Try {
     val uri = s"http://localhost:${node2port(sender)}/wallet/payment"
     sender.log.debug(s"Trying to query wallet address: $uri")
     Http(uri).header("Accept", "text/plain").option(HttpOptions.readTimeout(1000))
         .param("address", address)
         .param("amount", amount.toString)
-        .param("priority", priority.toString)
+        .param("fee", fee.toString)
         .asString.body
   }
 
