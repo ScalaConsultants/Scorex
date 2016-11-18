@@ -10,6 +10,7 @@ class FuzzyTransactionTest extends ApiTestFixture with Matchers {
   val maxFeePercentage = 0.1
   val maxAmountPercentage = 0.3
   val numberOfTransactions = 30
+  val delayBetweenTransactions = 100
 
   "Series of random transactions requests" should "result in successfully finalized transactions" in {
     // given
@@ -39,12 +40,12 @@ class FuzzyTransactionTest extends ApiTestFixture with Matchers {
       val maxAmount = ((maxFunds - fee) * maxAmountPercentage).toInt
       val amount = Random.nextInt(maxAmount)
 
-      val sender = Random.shuffle(node2State.filter { case (_, s) => s.funds >= amount + fee }).head._1
+      val sender = Random.shuffle(node2State collect { case (node, state) if state.funds >= amount + fee => node }).head
       val receiver = Random.shuffle(nodes).head
-      val receiverAddress = node2Address(receiver)
 
-      makePayment(sender, receiverAddress, amount ,fee)
-      sender.log.debug(s"Sent $amount with $fee of fee to $receiverAddress")
+      makePayment(sender, receiver, amount ,fee)
+      sender.log.debug(s"Sent $amount with $fee of fee to ${receiver.applicationName}")
+      receiver.log.debug(s"Sent $amount with $fee of fee from ${sender.applicationName}")
 
       // TODO: figure out who created block and received fee
 
@@ -52,7 +53,7 @@ class FuzzyTransactionTest extends ApiTestFixture with Matchers {
         .fundsChangedBy(sender, -(amount + fee))
         .fundsChangedBy(receiver, amount)
 
-      synchronized(wait(timeout))
+      synchronized(wait(delayBetweenTransactions))
 
       performRandomTransactions(newStates, transactionsLeft -1)
     }

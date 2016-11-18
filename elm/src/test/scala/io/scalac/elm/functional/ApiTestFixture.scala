@@ -38,7 +38,7 @@ trait ApiTestFixture extends FlatSpec with BeforeAndAfterAll {
     }
   }
 
-  val timeout = 550
+  val queryTimeout = 550
   val maxAttempts = 10
   val configs = (1 to 4).map(i => AppConfig.load(ConfigFactory.load(s"application-fuzzy-test-$i.conf")))
   val nodes = (1 to 4).map(i => AppInfo(s"elm-test-$i")).zip(configs).map(TestElmApp.tupled)
@@ -49,7 +49,7 @@ trait ApiTestFixture extends FlatSpec with BeforeAndAfterAll {
   protected def getWalletAddress(node: TestElmApp) = Try {
     val uri = s"http://localhost:${node2port(node)}/wallet/address"
     node.log.debug(s"Trying to query wallet address: $uri")
-    val result = Http(uri).header("Accept", "text/plain").option(HttpOptions.readTimeout(timeout)).asString.body
+    val result = Http(uri).header("Accept", "text/plain").option(HttpOptions.readTimeout(queryTimeout)).asString.body
     node.log.debug(s"Received $result from $uri")
     result
   } match {
@@ -60,7 +60,7 @@ trait ApiTestFixture extends FlatSpec with BeforeAndAfterAll {
   protected def getWalletFunds(node: TestElmApp) = Try {
     val uri = s"http://localhost:${node2port(node)}/wallet/funds"
     node.log.debug(s"Trying to query wallet address: $uri")
-    val result = Http(uri).header("Accept", "text/plain").option(HttpOptions.readTimeout(timeout)).asString.body
+    val result = Http(uri).header("Accept", "text/plain").option(HttpOptions.readTimeout(queryTimeout)).asString.body
     node.log.debug(s"Received $result from $uri")
     result.toInt
   } match {
@@ -68,11 +68,11 @@ trait ApiTestFixture extends FlatSpec with BeforeAndAfterAll {
     case Failure(error) => throw new IllegalStateException("Funds should be always accessible", error)
   }
 
-  protected def makePayment(sender: TestElmApp, address: String, amount: Int, fee: Int) = Try {
+  protected def makePayment(sender: TestElmApp, receiver: TestElmApp, amount: Int, fee: Int) = Try {
     val uri = s"http://localhost:${node2port(sender)}/wallet/payment"
     sender.log.debug(s"Trying to query wallet address: $uri")
-    val result = Http(uri).header("Accept", "text/plain").option(HttpOptions.readTimeout(timeout))
-      .param("address", address)
+    val result = Http(uri).header("Accept", "text/plain").option(HttpOptions.readTimeout(queryTimeout))
+      .param("address", node2Address(receiver))
       .param("amount", amount.toString)
       .param("fee", fee.toString)
       .asString.body
@@ -89,15 +89,15 @@ trait ApiTestFixture extends FlatSpec with BeforeAndAfterAll {
   }.foreach { node =>
     @tailrec
     def waitForInitialization(attemptsLeft: Int): Unit =
-      if (attemptsLeft <= 0) throw new IllegalStateException("Unable to initialize test properly")
+      if (attemptsLeft <= 0) throw new IllegalArgumentException("Exceeded attempts number")
       else {
-        node.synchronized(node.wait(timeout))
+        node.synchronized(node.wait(queryTimeout))
         Try(getWalletAddress(node) -> getWalletFunds(node)) match {
           case Success((address, _)) if address.nonEmpty || address == "0" =>
           case Success((address, _)) =>
             node.log.debug(s"Returned empty message")
             waitForInitialization(attemptsLeft - 1)
-          case Failure(error)   =>
+          case Failure(error) =>
             node.log.debug(s"Returned error message: $error")
             waitForInitialization(attemptsLeft - 1)
         }
