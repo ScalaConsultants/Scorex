@@ -20,6 +20,9 @@ object ElmBlocktree {
     def removeChild(childId: ByteKey): Node = copy(children = children - childId)
   }
 
+  //if accumulatedScore is same pick one base on hash
+  implicit def nodeOrdering: Ordering[Node] = Ordering.by(n => (n.accumulatedScore, n.id.base58))
+
   /**
     * In order to main multiple blockchains we need a quick way determinig the state for each block in the tree.
     * While MemPool is not directly related to the chain, it's convenient to store it here in case the Forger,
@@ -126,13 +129,13 @@ case class ElmBlocktree private(
     * Find a leaf with the lowest score
     */
   private def minLeaf: Node =
-    leaves.map(blocks).minBy(_.accumulatedScore)
+    leaves.map(blocks).min
 
   /**
     * Find a leaf with the highest score - the last block of the main chain
     */
   private def maxLeaf: Node =
-    leaves.map(blocks).maxBy(_.accumulatedScore)
+    leaves.map(blocks).max
 
   /**
     * Limits the branches of the blocktree to a maximum of n
