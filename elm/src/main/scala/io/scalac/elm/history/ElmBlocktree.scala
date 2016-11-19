@@ -9,6 +9,7 @@ import scorex.core.NodeViewComponentCompanion
 import scorex.core.consensus.BlockChain
 import scorex.core.consensus.History.{BlockId, HistoryComparisonResult, RollbackTo}
 import scorex.core.transaction.box.proposition.PublicKey25519Proposition
+import scorex.crypto.signatures.Curve25519
 
 import scala.annotation.tailrec
 import scala.util.Try
@@ -152,7 +153,22 @@ case class ElmBlocktree private(
   }
 
   private def isValid(block: ElmBlock): Boolean = {
-    //TODO: implement fully
+
+
+
+    // check block signature
+    // check if parent exists
+    // check transaction correctness
+    // check coins take transaction correctness
+
+
+    val pubKey = block.generator.pubKeyBytes
+    val sygnature = block.generationSignature
+    val message = "a".getBytes
+    //Curve25519.verify()
+    //out.map(o => Curve25519.verify(in.boxKey.signature, o.bytes, o.proposition.pubKeyBytes)).exists(identity)
+    Curve25519.verify(sygnature, message, pubKey)
+
     leaves(block.id.key)
   }
 
