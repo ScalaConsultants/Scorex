@@ -125,6 +125,7 @@ lazy val examples = Project(id = "examples", base = file(s"examples"))
 lazy val elm = Project(id = "elm", base = file(s"elm"))
   .dependsOn(basics)
   .settings(commonSettings: _*)
+  .settings(libraryDependencies ++= testingDependencies)
   .settings(assemblyOutputPath in assembly := file("elm/target/elm.jar"))
 
 lazy val basics = Project(id = "scorex", base = file("."))

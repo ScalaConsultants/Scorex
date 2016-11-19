@@ -1,23 +1,43 @@
 package io.scalac.elm.core
 
+import cats.data.Xor
 import io.scalac.elm.config.AppConfig
+import io.scalac.elm.core.ElmNodeViewHolder.{FullState, _}
 import io.scalac.elm.history.{ElmBlocktree, ElmSyncInfo}
 import io.scalac.elm.state.{ElmMemPool, ElmMinState, ElmWallet}
 import io.scalac.elm.transaction._
 import io.scalac.elm.util._
+import scorex.core.NodeViewHolder._
 import scorex.core.NodeViewModifier.ModifierTypeId
+import scorex.core.network.ConnectedPeer
 import scorex.core.transaction.Transaction
 import scorex.core.transaction.box.proposition.PublicKey25519Proposition
 import scorex.core.transaction.state.PrivateKey25519Companion
 import scorex.core.{NodeViewHolder, NodeViewModifier, NodeViewModifierCompanion}
+import scorex.crypto.encode.Base58
+
+import scala.collection.mutable
+
+object ElmNodeViewHolder {
+  case class FullState(minState: ElmMinState, wallet: ElmWallet, memPool: ElmMemPool)
+
+  val zeroFullState = FullState(ElmMinState(), ElmWallet(), ElmMemPool())
+}
 
 class ElmNodeViewHolder(appConfig: AppConfig) extends NodeViewHolder[PublicKey25519Proposition, ElmTransaction, ElmBlock] {
+
+  private val state: mutable.Map[ByteKey, FullState] = mutable.Map.empty
+
   override type SI = ElmSyncInfo
 
   override type HIS = ElmBlocktree
   override type MS = ElmMinState
   override type VL = ElmWallet
   override type MP = ElmMemPool
+
+  type P = PublicKey25519Proposition
+  type TX = ElmTransaction
+  type PMOD = ElmBlock
 
   override lazy val modifierCompanions: Map[ModifierTypeId, NodeViewModifierCompanion[_ <: NodeViewModifier]] =
     Map(
@@ -29,10 +49,11 @@ class ElmNodeViewHolder(appConfig: AppConfig) extends NodeViewHolder[PublicKey25
 
   override protected def genesisState: (HIS, MS, VL, MP) = {
 
-    val zeroFullState = ElmBlocktree.zero.state(ElmBlock.zero.id.key)
     val emptyMinState = zeroFullState.minState
     val emptyWallet = zeroFullState.wallet
     val emptyMemPool = zeroFullState.memPool
+
+    state += (ElmBlock.zero.id.key -> zeroFullState)
 
     if (appConfig.genesis.generate) {
       val initialAmount = appConfig.genesis.initialFunds
@@ -47,14 +68,71 @@ class ElmNodeViewHolder(appConfig: AppConfig) extends NodeViewHolder[PublicKey25
       val signature = PrivateKey25519Companion.sign(emptyWallet.secret, unsignedBlock.bytes)
       val genesisBlock: ElmBlock = unsignedBlock.copy(generationSignature = signature.signature)
 
-      val blocktree = ElmBlocktree.zero.append(genesisBlock, emptyMemPool)
-      val fullState = blocktree.fullState
+      val blocktree = ElmBlocktree.zero.append(genesisBlock, emptyMinState).toOption.get
 
       log.info(s"Genesis state with block ${genesisBlock.jsonNoTxs.noSpaces} created")
 
-      (blocktree, fullState.minState, fullState.wallet, fullState.memPool)
+      val updatedMinState = emptyMinState.applyModifier(genesisBlock).get
+      val updatedWallet = emptyWallet.scanPersistent(genesisBlock)
+
+      state += genesisBlock.id.key -> FullState(updatedMinState, updatedWallet, emptyMemPool)
+
+      (blocktree, updatedMinState, updatedWallet, emptyMemPool)
     } else {
-      (ElmBlocktree.zero, ElmMinState(), ElmWallet(), new ElmMemPool)
+      (ElmBlocktree.zero, emptyMinState, emptyWallet, emptyMemPool)
+    }
+  }
+
+  override protected def pmodModify(block: ElmBlock, source: Option[ConnectedPeer]): Unit = {
+    notifySubscribers(
+      EventType.StartingPersistentModifierApplication,
+      StartingPersistentModifierApplication[P, TX, PMOD](block)
+    )
+
+    log.info(s"Applying modifier to nodeViewHolder: ${block.id.base58}")
+
+    val parentId = block.parentId.key
+    val parentState = state.getOrElse(parentId, zeroFullState)
+
+    history().append(block, parentState.minState) match {
+      case Xor.Right(newBlocktree) =>
+        updateState(newBlocktree, block)
+
+        log.info(s"Persistent modifier ${Base58.encode(block.id)} applied successfully")
+        notifySubscribers(EventType.SuccessfulPersistentModifier, SuccessfulModification[P, TX, PMOD](block, source))
+
+      case Xor.Left(e) =>
+        log.warn(s"Can`t apply persistent modifier (id: ${block.id.base58}, contents: $block) to history, reason: $e", e)
+        notifySubscribers(EventType.FailedPersistentModifier, FailedModification[P, TX, PMOD](block, e, source))
+    }
+  }
+
+  override def txModify(tx: ElmTransaction, source: Option[ConnectedPeer]): Unit = {
+    val updWallet = vault().scanOffchain(tx)
+    memoryPool().applyTx(tx, minimalState()) match {
+      case Xor.Right(updPool) =>
+        log.debug(s"Unconfirmed transaction $tx added to the mempool")
+        nodeView = (history(), minimalState(), updWallet, updPool)
+        notifySubscribers(EventType.SuccessfulTransaction, SuccessfulTransaction[P, TX](tx, source))
+
+      case Xor.Left(e) =>
+        notifySubscribers(EventType.FailedTransaction, FailedTransaction[P, TX](tx, e, source))
+    }
+  }
+
+  private def updateState(newBlocktree: ElmBlocktree, newBlock: ElmBlock): Unit = {
+    val blockId = newBlock.id.key
+    val parentState = state(newBlock.parentId.key)
+    val newMinState = parentState.minState.applyBlock(newBlock) //TODO: confirmation depth
+    val newWallet = parentState.wallet.scanPersistent(newBlock) //TODO: confirmation depth
+    val newMemPool = parentState.memPool.applyBlock(newBlock)
+
+    state += blockId -> FullState(newMinState, newWallet, newMemPool)
+
+    if (blockId == newBlocktree.maxLeaf.id) {
+      nodeView = (newBlocktree, newMinState, newWallet, newMemPool)
+    } else {
+      nodeView = nodeView.copy(_1 = newBlocktree)
     }
   }
 }

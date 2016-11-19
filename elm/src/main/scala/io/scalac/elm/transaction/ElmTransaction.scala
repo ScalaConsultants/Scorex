@@ -13,7 +13,7 @@ object ElmTransaction extends NodeViewModifierCompanion[ElmTransaction] with Jso
   val codec = getCodec
 }
 
-case class ElmTransaction(inputs: Seq[TxInput], outputs: Seq[TxOutput], fee: Long, timestamp: Long)
+case class ElmTransaction(inputs: List[TxInput], outputs: List[TxOutput], fee: Long, timestamp: Long = System.currentTimeMillis())
   extends Transaction[PublicKey25519Proposition] {
 
   override type M = ElmTransaction

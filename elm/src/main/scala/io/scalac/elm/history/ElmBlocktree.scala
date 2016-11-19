@@ -1,14 +1,14 @@
 package io.scalac.elm.history
 
-import io.scalac.elm.history.ElmBlocktree.{FullState, Node}
-import io.scalac.elm.state.{ElmMemPool, ElmMinState, ElmWallet}
+import cats.data.Xor
+import io.scalac.elm.history.ElmBlocktree._
+import io.scalac.elm.state.ElmMinState
 import io.scalac.elm.transaction.{ElmBlock, ElmTransaction}
-import io.scalac.elm.util.ByteKey
+import io.scalac.elm.util.{ByteKey, Error}
 import scorex.core.NodeViewComponentCompanion
 import scorex.core.consensus.BlockChain
 import scorex.core.consensus.History.{BlockId, HistoryComparisonResult, RollbackTo}
 import scorex.core.transaction.box.proposition.PublicKey25519Proposition
-import scorex.core.utils.ScorexLogging
 
 import scala.annotation.tailrec
 import scala.util.Try
@@ -20,32 +20,18 @@ object ElmBlocktree {
     def removeChild(childId: ByteKey): Node = copy(children = children - childId)
   }
 
-  //if accumulatedScore is same pick one base on hash
-  implicit def nodeOrdering: Ordering[Node] = Ordering.by(n => (n.accumulatedScore, n.id.base58))
-
-  /**
-    * In order to main multiple blockchains we need a quick way determinig the state for each block in the tree.
-    * While MemPool is not directly related to the chain, it's convenient to store it here in case the Forger,
-    * does not use all avaialable transactions. When forging a new block, the Forger should merge the main MemPool with
-    * the one stored on the parent block.
-    *
-    * I don't think this is a great design. Fristly, becaus the blockchain is storing that state, secondly because it creates
-    * cyclic dependencies between packages. But at this time it seems the most convenient.
-    */
-  case class FullState(minState: ElmMinState, wallet: ElmWallet, memPool: ElmMemPool)
-
   val zero: ElmBlocktree = {
     val zeroNode = Node(ElmBlock.zero, Set.empty, 0, 0, 0)
-    val zeroState = FullState(ElmMinState(), ElmWallet(), new ElmMemPool)
-    ElmBlocktree(Map(zeroNode.id -> zeroNode), Set(zeroNode.id), Map(zeroNode.id -> zeroState))
+    ElmBlocktree(Map(zeroNode.id -> zeroNode), Set(zeroNode.id))
   }
+
+  case object BlockValidationError extends Error
 }
 
 case class ElmBlocktree private(
-  blocks: Map[ByteKey, Node] = Map(),
-  leaves: Set[ByteKey],
-  state: Map[ByteKey, FullState]
-) extends BlockChain[PublicKey25519Proposition, ElmTransaction, ElmBlock, ElmSyncInfo, ElmBlocktree] with ScorexLogging {
+  blocks: Map[ByteKey, Node],
+  leaves: Set[ByteKey]
+) extends BlockChain[PublicKey25519Proposition, ElmTransaction, ElmBlock, ElmSyncInfo, ElmBlocktree] {
 
   override type NVCT = ElmBlocktree
 
@@ -53,53 +39,47 @@ case class ElmBlocktree private(
   val N = 8
   val confirmationDepth = 5
 
-  def append(block: ElmBlock, unusedTxs: ElmMemPool): ElmBlocktree = {
+  def append(block: ElmBlock, minState: ElmMinState): Error Xor ElmBlocktree = {
     val blockId = block.id.key
     val parentId = block.parentId.key
 
-    if (leaves(parentId)) {
-      val score = calculateScore(block, state(parentId).minState)
+    if (isValid(block)) {
       val parent = blocks(parentId)
+      val score = calculateScore(block, parent.height, minState)
       val updatedParent = parent.addChild(blockId)
       val newNode = Node(block, Set.empty, parent.height + 1, score, parent.accumulatedScore + score)
 
-      val newMinState = state(parentId).minState.applyModifier(block).get // block should be validated before
-      val newWallet = state(parentId).wallet.scanPersistent(block)
-      val fullState = FullState(newMinState, newWallet, unusedTxs)
-
       val updatedBlocks = blocks + (parentId -> updatedParent) + (blockId -> newNode)
-      val updatedTree = ElmBlocktree(updatedBlocks, leaves + blockId, state + (blockId -> fullState))
+      val updatedTree = ElmBlocktree(updatedBlocks, leaves + blockId)
       val limitedTree = limitBranches(N, updatedTree)
-      limitedTree
+      Xor.right(limitedTree)
     } else {
-      log.error(s"Parent ID [${parentId.base58}] of new block [${blockId.base58}] was not found among the leaves")
-      this
+      Xor.left(BlockValidationError)
     }
   }
 
-  def calculateScore(block: ElmBlock, minState: ElmMinState): Long = {
+  def calculateScore(block: ElmBlock, parentHeight: Int, minState: ElmMinState): Long = {
     val coinstake = block.txs.head
     val partialScores = for {
       in <- coinstake.inputs
       txOut <- minState.get(in.closedBoxId)
-      depth <- txOut.depth
-    } yield txOut.value * depth
+      height <- txOut.height
+    } yield txOut.value * (parentHeight - height)
 
     partialScores.sum
   }
 
-  /**
-    * FullState of the main chain
-    */
-  def fullState: FullState =
-    state(maxLeaf.id)
-
-  def mainChain: List[Node] =
+  def mainChain: Stream[Node] =
     chainOf(maxLeaf.id)
 
-  def chainOf(blockId: ByteKey): List[Node] =
+  override lazy val height: Int = maxLeaf.height
+
+  /**
+    * Traverse the tree from leaf to root to return a single chain (branch)
+    */
+  def chainOf(blockId: ByteKey): Stream[Node] =
     blocks.get(blockId).filter(_ != ElmBlock.zero.id.key)
-      .map(node => node :: chainOf(node.id)).getOrElse(Nil)
+      .map(node => node #:: chainOf(node.id)).getOrElse(Stream.Empty)
 
   override def blockById(blockId: BlockId): Option[ElmBlock] =
     blocks.get(blockId).map(_.block)
@@ -128,14 +108,14 @@ case class ElmBlocktree private(
   /**
     * Find a leaf with the lowest score
     */
-  private def minLeaf: Node =
-    leaves.map(blocks).min
+  def minLeaf: Node =
+    leaves.map(blocks).minBy(_.accumulatedScore)
 
   /**
     * Find a leaf with the highest score - the last block of the main chain
     */
-  private def maxLeaf: Node =
-    leaves.map(blocks).max
+  def maxLeaf: Node =
+    leaves.map(blocks).maxBy(_.accumulatedScore)
 
   /**
     * Limits the branches of the blocktree to a maximum of n
@@ -162,7 +142,7 @@ case class ElmBlocktree private(
       val leaf = blocks(leafId)
       val parent = blocks(leaf.block.parentId.key)
       val updatedParent = parent.removeChild(leafId)
-      val updatedTree = ElmBlocktree(blocks - leafId, tree.leaves - leafId, state - leafId)
+      val updatedTree = ElmBlocktree(blocks - leafId, tree.leaves - leafId)
 
       if (updatedParent.children.nonEmpty)
         updatedTree
@@ -171,36 +151,38 @@ case class ElmBlocktree private(
     }
   }
 
+  private def isValid(block: ElmBlock): Boolean = {
+    //TODO: implement fully
+    leaves(block.id.key)
+  }
+
+
+
+
   // Unused methods:
 
-  @deprecated("we need a mempool of unused transactions")
+  @deprecated("we need a mempool of unused transactions", "")
   override def append(block: ElmBlock): Try[(ElmBlocktree, Option[RollbackTo[ElmBlock]])] = ???
 
-  @deprecated("unused: cannot calculate score without minstate")
+  @deprecated("unused: cannot calculate score without minstate", "")
   override def score(block: ElmBlock): BigInt = 0
 
-  @deprecated("unnecessary")
+  @deprecated("unnecessary", "")
   override def chainScore(): BigInt = maxLeaf.accumulatedScore
 
-  @deprecated("unnecessary")
-  override def isEmpty: Boolean = blocks.isEmpty
-
-  @deprecated("unused method (actually the place of usage is unused)")
+  @deprecated("unused method (actually the place of usage is unused)", "")
   override def companion: NodeViewComponentCompanion = ???
 
-  @deprecated("unnecessary")
-  override def height(): Int = maxLeaf.height
-
-  @deprecated("unnecessary")
+  @deprecated("unnecessary", "")
   override def heightOf(blockId: BlockId): Option[Int] =
     blocks.get(blockId).map(_.height)
 
-  @deprecated("unnecessary")
+  @deprecated("unnecessary", "")
   override def discardBlock(): Try[ElmBlocktree] = ???
 
-  @deprecated("unnecessary")
+  @deprecated("unnecessary", "")
   override def blockAt(height: Int): Option[ElmBlock] = None
 
-  @deprecated("unnecessary")
+  @deprecated("unnecessary", "")
   override def children(blockId: BlockId): Seq[ElmBlock] = Nil
 }

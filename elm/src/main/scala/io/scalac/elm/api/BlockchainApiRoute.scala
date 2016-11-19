@@ -38,7 +38,7 @@ class BlockchainApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(impli
   def blocks: Route = get {
     path("blocks") {
       complete {
-        getBlockchain.map(_.mainChain.map(_.id.base58).asJson)
+        getBlockchain.map(_.mainChain.toList.map(_.id.base58).asJson)
       }
     }
   }

@@ -5,7 +5,8 @@ import javax.ws.rs.{Path, Produces, QueryParam}
 import akka.actor.{ActorRef, ActorRefFactory}
 import akka.http.scaladsl.server.Route
 import akka.pattern.ask
-import io.scalac.elm.state.ElmWallet
+import io.scalac.elm.history.ElmBlocktree
+import io.scalac.elm.state.{ElmMemPool, ElmMinState, ElmWallet}
 import io.scalac.elm.transaction.ElmTransaction
 import io.swagger.annotations._
 import scorex.core.LocalInterface.LocallyGeneratedTransaction
@@ -34,23 +35,25 @@ class WalletApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(implicit 
   @ApiImplicitParams(Array(
     new ApiImplicitParam(name = "address", required = true, dataType = "string", paramType = "query", value = "XxYyZz"),
     new ApiImplicitParam(name = "amount", required = true, dataType = "integer", paramType = "query", value = "1000"),
-    new ApiImplicitParam(name = "priority", required = true, dataType = "integer", paramType = "query", value = "1")
+    new ApiImplicitParam(name = "fee", required = true, dataType = "integer", paramType = "query", value = "10")
   ))
   @ApiResponses(Array(
     new ApiResponse(code = 200, message = "OK")
   ))
   def payment: Route = get {
     path("payment") {
-      parameter("address", "amount".as[Long], "priority".as[Int]) { (address, amount, priority) =>
+      parameter("address", "amount".as[Long], "fee".as[Int]) { (address, amount, priority) =>
         complete {
           val recipient = PublicKey25519Proposition(Base58.decode(address).get)
-          getWallet.map(_.createPayment(recipient, amount, priority) match {
-            case Some(payment) =>
-              nodeViewHolder ! LocallyGeneratedTransaction[PublicKey25519Proposition, ElmTransaction](payment)
-              "OK"
-            case None =>
-              "Insufficient funds"
-          })
+          getView.map { case CurrentView(blocktree, _, wallet, _) =>
+            wallet.createPayment(recipient, amount, priority, blocktree.height) match {
+              case Some(payment) =>
+                nodeViewHolder ! LocallyGeneratedTransaction[PublicKey25519Proposition, ElmTransaction](payment)
+                "OK"
+              case None =>
+                "Insufficient funds"
+            }
+          }
         }
       }
     }
@@ -90,10 +93,13 @@ class WalletApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(implicit 
   ))
   def coinage: Route = get {
     path("coinage") {
-      complete(getWallet.map(_.accumulatedCoinAge.toString))
+      complete(getView.map(v => v.vault.accumulatedCoinAge(v.history.height).toString))
     }
   }
 
+  def getView: Future[CurrentView[ElmBlocktree, ElmMinState, ElmWallet, ElmMemPool]] =
+    nodeViewHolder.ask(NodeViewHolder.GetCurrentView).mapTo[CurrentView[ElmBlocktree, ElmMinState, ElmWallet, ElmMemPool]]
+
   def getWallet: Future[ElmWallet] =
-    nodeViewHolder.ask(NodeViewHolder.GetCurrentView).mapTo[CurrentView[_, _, ElmWallet, _]].map(_.vault)
+    getView.map(_.vault)
 }
