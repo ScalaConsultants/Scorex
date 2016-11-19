@@ -41,8 +41,6 @@ case class ElmWallet(secret: PrivateKey25519 = generateSecret(),
 
   def generator: PublicKey25519Proposition = secret.publicImage
 
-  def generator: PublicKey25519Proposition = publicKeys.head // our wallet will always have exactly 1 key-pair
-
   override def scanOffchain(tx: ElmTransaction): ElmWallet = {
     val outs = for {
       txIn <- tx.inputs
