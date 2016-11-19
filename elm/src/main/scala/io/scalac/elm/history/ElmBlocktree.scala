@@ -20,6 +20,13 @@ object ElmBlocktree {
     def removeChild(childId: ByteKey): Node = copy(children = children - childId)
   }
 
+  /**
+    * We need a deterministic method of designating the main chain, especially when 2 different chains have the same score.
+    * Choosing the block ID as a tie-breaker is of course very naive, as nodes would then be incentivized to manaully pick lowest block IDs,
+    * resulting in conflicts. For now we just assume they won't do that.
+    */
+  implicit def nodeOrdering: Ordering[Node] = Ordering.by(n => (n.accumulatedScore, n.id.base58))
+
   val zero: ElmBlocktree = {
     val zeroNode = Node(ElmBlock.zero, Set.empty, 0, 0, 0)
     ElmBlocktree(Map(zeroNode.id -> zeroNode), Set(zeroNode.id))
@@ -109,13 +116,13 @@ case class ElmBlocktree private(
     * Find a leaf with the lowest score
     */
   def minLeaf: Node =
-    leaves.map(blocks).minBy(_.accumulatedScore)
+    leaves.map(blocks).min
 
   /**
     * Find a leaf with the highest score - the last block of the main chain
     */
   def maxLeaf: Node =
-    leaves.map(blocks).maxBy(_.accumulatedScore)
+    leaves.map(blocks).max
 
   /**
     * Limits the branches of the blocktree to a maximum of n
