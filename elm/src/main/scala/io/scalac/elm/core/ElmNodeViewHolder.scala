@@ -19,14 +19,22 @@ import scorex.crypto.encode.Base58
 import scala.collection.mutable
 
 object ElmNodeViewHolder {
-  case class FullState(minState: ElmMinState, wallet: ElmWallet, memPool: ElmMemPool)
 
+  /**
+    * Info about the current view with the history of FullStates included.
+    * This probably exposes too much, but importantly fullStates are immutable.
+    */
+  case class FullView(history: ElmBlocktree, minState: ElmMinState, wallet: ElmWallet,
+    memPool: ElmMemPool, fullStates: Map[ByteKey, FullState])
+  case object GetFullView
+
+  case class FullState(minState: ElmMinState, wallet: ElmWallet, memPool: ElmMemPool)
   val zeroFullState = FullState(ElmMinState(), ElmWallet(), ElmMemPool())
 }
 
-class ElmNodeViewHolder(appConfig: AppConfig) extends NodeViewHolder[PublicKey25519Proposition, ElmTransaction, ElmBlock] {
-
+class ElmNodeViewHolder(appConfig: AppConfig) extends {
   private val state: mutable.Map[ByteKey, FullState] = mutable.Map.empty
+} with NodeViewHolder[PublicKey25519Proposition, ElmTransaction, ElmBlock] {
 
   override type SI = ElmSyncInfo
 
@@ -44,6 +52,9 @@ class ElmNodeViewHolder(appConfig: AppConfig) extends NodeViewHolder[PublicKey25
       ElmBlock.ModifierTypeId -> ElmBlock,
       Transaction.ModifierTypeId -> ElmTransaction
     )
+
+  override def receive: Receive =
+    getFullView orElse super.receive
 
   override def restoreState(): Option[(HIS, MS, VL, MP)] = None
 
@@ -72,7 +83,7 @@ class ElmNodeViewHolder(appConfig: AppConfig) extends NodeViewHolder[PublicKey25
 
       log.info(s"Genesis state with block ${genesisBlock.jsonNoTxs.noSpaces} created")
 
-      val updatedMinState = emptyMinState.applyModifier(genesisBlock).get
+      val updatedMinState = emptyMinState.applyBlock(genesisBlock)
       val updatedWallet = emptyWallet.scanPersistent(genesisBlock)
 
       state += genesisBlock.id.key -> FullState(updatedMinState, updatedWallet, emptyMemPool)
@@ -134,5 +145,10 @@ class ElmNodeViewHolder(appConfig: AppConfig) extends NodeViewHolder[PublicKey25
     } else {
       nodeView = nodeView.copy(_1 = newBlocktree)
     }
+  }
+
+  private def getFullView: Receive = {
+    case GetFullView =>
+      sender ! FullView(history(), minimalState(), vault(), memoryPool(), state.toMap)
   }
 }

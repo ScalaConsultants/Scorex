@@ -43,6 +43,7 @@ case class ElmBlocktree private(
   override type NVCT = ElmBlocktree
 
   //TODO: configure
+  val baseTarget = 100L
   val N = 8
   val confirmationDepth = 5
 
@@ -125,6 +126,11 @@ case class ElmBlocktree private(
     leaves.map(blocks).max
 
   /**
+    * Target score for given chain. Currently constant
+    */
+  def targetScore(leafId: ByteKey): Long = baseTarget
+
+  /**
     * Limits the branches of the blocktree to a maximum of n
     * if there are more than n branches, the lowest-scored ones are removed
     */
@@ -160,7 +166,7 @@ case class ElmBlocktree private(
 
   private def isValid(block: ElmBlock): Boolean = {
     //TODO: implement fully
-    leaves(block.id.key)
+    leaves(block.parentId.key)
   }
 
 

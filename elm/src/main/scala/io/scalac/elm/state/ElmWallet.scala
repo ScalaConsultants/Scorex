@@ -38,7 +38,6 @@ case class ElmWallet(secret: PrivateKey25519 = generateSecret(),
 
   private val pubKeyBytes: ByteKey = secret.publicKeyBytes
 
-
   def generator: PublicKey25519Proposition = secret.publicImage
 
   override def scanOffchain(tx: ElmTransaction): ElmWallet = {
@@ -56,30 +55,26 @@ case class ElmWallet(secret: PrivateKey25519 = generateSecret(),
     ElmWallet(secret, reducedChainTxOuts, currentBalance - sum)
   }
 
-  override def scanPersistent(modifier: ElmBlock): ElmWallet = {
-    val transactions = modifier.transactions.getOrElse(Nil)
+  def scanOffchain(txs: Traversable[ElmTransaction]): ElmWallet =
+    txs.foldLeft(this)((w, tx) => w.scanOffchain(tx))
 
-    // increase balance by confirmed outputs
-    val increasedWallet = {
-      val outs = for {
-        tx <- transactions
-        out <- tx.outputs if out.proposition.pubKeyBytes.key == pubKeyBytes
-      } yield out.id.key -> out
+  override def scanPersistent(block: ElmBlock): ElmWallet = {
+    val income = for {
+      tx <- block.txs
+      out <- tx.outputs if out.proposition.pubKeyBytes.key == pubKeyBytes
+    } yield out.id.key -> out
 
-      val increasedOutputs = chainTxOutputs ++ outs
-      val sum = outs.map(_._2.value).sum
-      ElmWallet(secret, increasedOutputs, currentBalance + sum)
-    }
+    val incomeSum = income.map(_._2.value).sum
 
-    // if we made coinstake TX remove coinstake inputs
-    if (modifier.generator.pubKeyBytes.key == pubKeyBytes) {
-      val coinstakeIns = transactions.headOption.toList.flatMap(_.inputs)
-      val reducedOutputs = increasedWallet.chainTxOutputs -- coinstakeIns.map(_.closedBoxId.key)
-      val sum = coinstakeIns.map(in => increasedWallet.chainTxOutputs(in.closedBoxId.key).value).sum
-      ElmWallet(secret, reducedOutputs, increasedWallet.currentBalance - sum)
-    }
-    else
-      increasedWallet
+    val outgoings = for {
+      tx <- block.txs
+      in <- tx.inputs
+      out <- chainTxOutputs.get(in.closedBoxId.key)
+    } yield out.id.key
+
+    val outgoingSum = outgoings.map(chainTxOutputs).map(_.value).sum
+
+    ElmWallet(secret, chainTxOutputs -- outgoings ++ income, currentBalance - outgoingSum + incomeSum)
   }
 
   def accumulatedCoinAge(currentHeight: Int): Long =
