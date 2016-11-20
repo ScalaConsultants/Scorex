@@ -161,6 +161,7 @@ class NetworkController(settings: Settings,
         .map(_.asInstanceOf[Seq[ConnectedPeer]])
         .foreach(_.foreach(_.handlerRef ! PeerConnectionHandler.CloseConnection))
       self ! Unbind
+      context stop peerManager
       context stop self
   }
 

@@ -5,12 +5,14 @@ import java.util.concurrent.TimeUnit
 import com.typesafe.config.ConfigException.BadValue
 import com.typesafe.config._
 import io.circe.{Json, parser}
-import io.scalac.elm.config.AppConfig._
+import io.scalac.elm.config.ElmConfig._
+import scorex.core.app.ApplicationVersion
 import scorex.core.settings.Settings
+import scorex.crypto.encode.Base58
 
 import scala.concurrent.duration.{Duration, FiniteDuration}
 
-object AppConfig {
+object ElmConfig {
   case class GenesisConf(generate: Boolean, initialFunds: Long, grains: Int)
 
   case class ConsensusConf(N: Int, confirmationDepth: Int, baseTarget: Long)
@@ -20,21 +22,38 @@ object AppConfig {
   case object DumbForgingStrategyConf extends ForgingStrategyConf
   case class ForgingConf(delay: FiniteDuration, strategy: ForgingStrategyConf)
 
+  case class NodeConf(appName: String = "elm", version: String = "1.0.0", name: String,
+    shutdownHook: Boolean, keyPairSeed: Array[Byte]) {
+    val appVersion = {
+      val major :: minor :: rev :: Nil = version.split("\\.").toList.map(_.toInt)
+      ApplicationVersion(major, minor, rev)
+    }
+  }
 
-  def load(root: Config = ConfigFactory.load()): AppConfig = {
+
+  def load(root: Config = ConfigFactory.load()): ElmConfig = {
     val elm = root.getConfig("elm")
 
-    AppConfig(
-      settings = settings(root),
+    ElmConfig(
+      scorexSettings = scorexSettings(root),
+      node = node(elm.getConfig("node")),
       genesis = genesis(elm.getConfig("genesis")),
       consensus = consensus(elm.getConfig("consensus")),
       forging = forging(elm.getConfig("forging"))
     )
   }
 
-  private def settings(config: Config) = new Settings {
+  private def scorexSettings(config: Config) = new Settings {
     val settingsJSON = config2Json(config.getObject("scorex"))
   }
+
+  private def node(config: Config) = NodeConf(
+    appName = config.getString("app-name"),
+    version = config.getString("version"),
+    name = config.getString("name"),
+    shutdownHook = config.getBoolean("shutdown-hook"),
+    keyPairSeed = Base58.decode(config.getString("key-pair-seed")).get
+  )
 
   private def genesis(config: Config) = GenesisConf(
     generate = config.getBoolean("generate"),
@@ -78,8 +97,9 @@ object AppConfig {
     Duration(config.getDuration(path, TimeUnit.MILLISECONDS), TimeUnit.MILLISECONDS)
 }
 
-case class AppConfig(
-  settings: Settings,
+case class ElmConfig(
+  scorexSettings: Settings,
+  node: NodeConf,
   genesis: GenesisConf,
   consensus: ConsensusConf,
   forging: ForgingConf

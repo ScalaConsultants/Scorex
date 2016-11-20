@@ -129,6 +129,9 @@ class PeerManager(settings: Settings) extends Actor with ScorexLogging {
       log.info(s"Blacklist peer $peer")
       peerDatabase.blacklistPeer(peer)
   }: Receive) orElse peerListOperations orElse apiInterface orElse peerCycle
+
+  override def postStop(): Unit =
+    peerDatabase.close()
 }
 
 object PeerManager {

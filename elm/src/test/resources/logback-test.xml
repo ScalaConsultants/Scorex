@@ -31,16 +31,18 @@
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <target>System.out</target>
         <encoder>
-            <pattern>[%thread] >> [%-5level] %logger{36} >> %d{HH:mm:ss.SSS} %msg%n</pattern>
+            <pattern>%d{HH:mm:ss.SSS} %-5level [%logger{36}] >> %msg%n</pattern>
         </encoder>
     </appender>
 
-    <root>
+    <root level="OFF">
         <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="ERRFILE"/>
-        <appender-ref ref="LOGFILE"/>
+        <!--<appender-ref ref="ERRFILE"/>-->
+        <!--<appender-ref ref="LOGFILE"/>-->
     </root>
 
-    <logger name="scorex" level="WARN" />
+    <logger name="io.scalac.elm.simulation" level="DEBUG" />
+    <logger name="io.scalac.elm.network" level="INFO" />
+    <logger name="io.scalac.elm.core" level="INFO" />
 
 </configuration>
