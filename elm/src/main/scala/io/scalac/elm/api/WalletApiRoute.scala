@@ -49,7 +49,7 @@ class WalletApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(implicit 
             wallet.createPayment(recipient, amount, priority, blocktree.height) match {
               case Some(payment) =>
                 nodeViewHolder ! LocallyGeneratedTransaction[PublicKey25519Proposition, ElmTransaction](payment)
-                "OK"
+                Base58.encode(payment.id)
               case None =>
                 "Insufficient funds"
             }

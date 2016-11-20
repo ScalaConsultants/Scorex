@@ -8,9 +8,9 @@ object ApiResponseDeserialization {
 
   def toAddress(body: String): String = body
 
-  def toFunds(body: String): Int = body.toInt
+  def toFunds(body: String): Long = body.toLong
 
-  def toPayment(body: String): Unit = ()
+  def toPayment(body: String): String = body
 
   def toBlockAddresses(body: String): Seq[String] = body.split('\n').map(_.trim)
 

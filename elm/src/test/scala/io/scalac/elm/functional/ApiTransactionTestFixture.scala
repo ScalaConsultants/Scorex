@@ -9,10 +9,12 @@ trait ApiTransactionTestFixture { self: ApiTestFixture =>
 
   type BlockId = Block.BlockId
 
-  case class ProcessedBlock(
-      id: BlockId,
-      parent: Option[ProcessedBlock],
-      generator: TestElmApp
+  case class ProcessedBlock(id: BlockId, parent: Option[ProcessedBlock], generator: TestElmApp)
+
+  case class BlockChainInfo(
+    blocks: Set[ElmBlock],
+    processedBlocks: Map[BlockId, ProcessedBlock],
+    depths: Map[ProcessedBlock, Int]
   )
 
   private val zeroParentId = "11111111111111111111111111111111"
@@ -42,19 +44,29 @@ trait ApiTransactionTestFixture { self: ApiTestFixture =>
   private def findLeafs(processed: Map[BlockId, ProcessedBlock]) = {
     val parentIds = processed.values.flatMap(_.parent).map(_.id).toSet
     val allIds = processed.values.map(_.id).toSet
-    val leafKeys = allIds -- parentIds
-    processed.filterKeys(leafKeys.contains)
+    val leafIds = allIds -- parentIds
+    processed.filterKeys(leafIds.contains)
   }
 
-  // TODO: block -> depth
-  // TODO: filter by confirmationDepth
+  private def findBlocksDepth(
+    currentBlocks: Set[ProcessedBlock],
+    currentDepth: Int = 0,
+    knownDepth: Map[ProcessedBlock, Int] = Map.empty
+  ): Map[ProcessedBlock, Int] = {
+    def isUnknown(block: ProcessedBlock) = !knownDepth.contains(block)
+    val newDepth = knownDepth ++ currentBlocks.filter(isUnknown).map { _ -> currentDepth }
+    val nextBlocks = currentBlocks.flatMap(_.parent).filter(isUnknown)
+    if (nextBlocks.isEmpty) knownDepth
+    else findBlocksDepth(nextBlocks, currentDepth + 1, newDepth)
+  }
 
-  protected def processTransactions(node: TestElmApp): Unit = {
+  protected def processBlockchain(node: TestElmApp): BlockChainInfo = {
     val blockchainIds = getBlocks(node)
     val blocks = blockchainIds.map(block => getTransaction(node, block)).toSet
-    val (x, y) = extractZeros(blocks)
-    val blockMap = buildTransactionTree(x, y) // buildTransactionTree.tupled(extractZeros(blocks)) gave compile error :(
-    val leafs = findLeafs(blockMap)
-    leafs
+    val (x, y) = extractZeros(blocks) // buildTransactionTree.tupled(extractZeros(blocks)) gave compile error :(
+    val processedBlocks = buildTransactionTree(x, y)
+    val leafs = findLeafs(processedBlocks)
+    val blocksDepth = findBlocksDepth(leafs.values.toSet)
+    BlockChainInfo(blocks, processedBlocks, blocksDepth)
   }
 }
