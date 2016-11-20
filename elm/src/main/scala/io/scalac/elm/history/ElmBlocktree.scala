@@ -1,6 +1,7 @@
 package io.scalac.elm.history
 
 import cats.data.Xor
+import io.scalac.elm.config.AppConfig.ConsensusConf
 import io.scalac.elm.history.ElmBlocktree._
 import io.scalac.elm.state.ElmMinState
 import io.scalac.elm.transaction.{ElmBlock, ElmTransaction}
@@ -15,21 +16,22 @@ import scala.util.Try
 
 object ElmBlocktree {
   case class Node(block: ElmBlock, children: Set[ByteKey], height: Int, score: Long, accumulatedScore: Long) {
-    def id: ByteKey = block.id.key
+    val id: ByteKey = block.id.key
+    val parentId: ByteKey = block.parentId.key
     def addChild(childId: ByteKey): Node = copy(children = children + childId)
     def removeChild(childId: ByteKey): Node = copy(children = children - childId)
   }
 
   /**
     * We need a deterministic method of designating the main chain, especially when 2 different chains have the same score.
-    * Choosing the block ID as a tie-breaker is of course very naive, as nodes would then be incentivized to manaully pick lowest block IDs,
+    * Choosing the block ID as a tie-breaker is of course very naive, as nodes would then be incentivized to manually pick lowest block IDs,
     * resulting in conflicts. For now we just assume they won't do that.
     */
   implicit def nodeOrdering: Ordering[Node] = Ordering.by(n => (n.accumulatedScore, n.id.base58))
 
-  val zero: ElmBlocktree = {
+  def zero(consensusConf: ConsensusConf): ElmBlocktree = {
     val zeroNode = Node(ElmBlock.zero, Set.empty, 0, 0, 0)
-    ElmBlocktree(Map(zeroNode.id -> zeroNode), Set(zeroNode.id))
+    ElmBlocktree(Map(zeroNode.id -> zeroNode), Set(zeroNode.id), consensusConf)
   }
 
   case object BlockValidationError extends Error
@@ -37,28 +39,28 @@ object ElmBlocktree {
 
 case class ElmBlocktree private(
   blocks: Map[ByteKey, Node],
-  leaves: Set[ByteKey]
+  leaves: Set[ByteKey],
+  consensusConf: ConsensusConf
 ) extends BlockChain[PublicKey25519Proposition, ElmTransaction, ElmBlock, ElmSyncInfo, ElmBlocktree] {
 
   override type NVCT = ElmBlocktree
 
-  //TODO: configure
-  val N = 8
-  val confirmationDepth = 5
-
   def append(block: ElmBlock, minState: ElmMinState): Error Xor ElmBlocktree = {
-    val blockId = block.id.key
-    val parentId = block.parentId.key
-
     if (isValid(block)) {
+      val blockId = block.id.key
+      val parentId = block.parentId.key
       val parent = blocks(parentId)
+
       val score = calculateScore(block, parent.height, minState)
-      val updatedParent = parent.addChild(blockId)
+
       val newNode = Node(block, Set.empty, parent.height + 1, score, parent.accumulatedScore + score)
+      val updatedParent = parent.addChild(blockId)
 
       val updatedBlocks = blocks + (parentId -> updatedParent) + (blockId -> newNode)
-      val updatedTree = ElmBlocktree(updatedBlocks, leaves + blockId)
-      val limitedTree = limitBranches(N, updatedTree)
+      val updatedLeaves = leaves - parentId + blockId
+      val updatedTree = ElmBlocktree(updatedBlocks, updatedLeaves, consensusConf)
+
+      val limitedTree = limitBranches(consensusConf.N, updatedTree)
       Xor.right(limitedTree)
     } else {
       Xor.left(BlockValidationError)
@@ -84,33 +86,54 @@ case class ElmBlocktree private(
   /**
     * Traverse the tree from leaf to root to return a single chain (branch)
     */
-  def chainOf(blockId: ByteKey): Stream[Node] =
+  def chainOf(blockId: ByteKey): Stream[Node] = {
     blocks.get(blockId).filter(_ != ElmBlock.zero.id.key)
-      .map(node => node #:: chainOf(node.id)).getOrElse(Stream.Empty)
+      .map(node => node #:: chainOf(node.parentId)).getOrElse(Stream.Empty)
+  }
+
+  /**
+    * Select a single chain by score
+    * @param n chain order: 1 - main chain, 2 - next best chain, and so on...
+    */
+  def chainOf(n: Int): Option[Stream[Node]] =
+    leaves.map(blocks).toList
+      .sorted.reverse
+      .map(_.id).zipWithIndex.map(_.swap).toMap
+      .get(n - 1).map(chainOf)
 
   override def blockById(blockId: BlockId): Option[ElmBlock] =
     blocks.get(blockId).map(_.block)
 
+  override def contains(id: BlockId): Boolean =
+    blocks.contains(id.key)
+
   /**
-    * Compare history by blocktree leaves. If the other blocktree has leaves that do not exist anywhere in this blocktree,
-    * that doesn't mean that blocktree cointains all the nodes of this blocktree. So 2 blocktree could be mutually Older.
-    * I think that should be OK.
+    * Compare history:
+    *   Equal   - if leaves are the same
+    *   Older   - if all the leaves of this blocktree are nodes of the remote blocktree
+    *   Younger - otherwise
+    *
+    * This means two blocktrees could be mutually Younger. Synchronization has to support that.
     */
   override def compare(other: ElmSyncInfo): HistoryComparisonResult.Value = {
     import HistoryComparisonResult._
 
-    val otherLeaves = other.startingPoints.map(_._2.key).toSet
-
-    if (leaves == otherLeaves)
+    if (leaves == other.leaves)
       Equal
-    else if (otherLeaves.forall(blocks.contains))
-      Younger
-    else
+    else if (leaves.forall(other.blocks))
       Older
+    else
+      Younger
   }
 
   override def syncInfo(answer: Boolean): ElmSyncInfo =
-    ElmSyncInfo(answer, leaves.toList.map(_.array))
+    ElmSyncInfo(answer, leaves, blocks.keySet)
+
+  def continuationIds(syncInfo: ElmSyncInfo): List[ByteKey] =
+    findContinuations(findStartingPoints(blocks.keySet, syncInfo.blocks))
+
+  override def applicable(block: ElmBlock): Boolean =
+    blocks.contains(block.parentId) && !blocks.contains(block.id)
 
   /**
     * Find a leaf with the lowest score
@@ -125,13 +148,18 @@ case class ElmBlocktree private(
     leaves.map(blocks).max
 
   /**
+    * Target score for given chain. Currently constant
+    */
+  def targetScore(leafId: ByteKey): Long = consensusConf.baseTarget
+
+  /**
     * Limits the branches of the blocktree to a maximum of n
     * if there are more than n branches, the lowest-scored ones are removed
     */
   @tailrec
   private def limitBranches(n: Int, tree: ElmBlocktree): ElmBlocktree = {
     if (leaves.size <= n)
-      this
+      tree
     else {
       val updatedTree = removeBranch(minLeaf.id, tree)
       limitBranches(n, updatedTree)
@@ -149,7 +177,7 @@ case class ElmBlocktree private(
       val leaf = blocks(leafId)
       val parent = blocks(leaf.block.parentId.key)
       val updatedParent = parent.removeChild(leafId)
-      val updatedTree = ElmBlocktree(blocks - leafId, tree.leaves - leafId)
+      val updatedTree = ElmBlocktree(blocks - leafId, tree.leaves - leafId, consensusConf)
 
       if (updatedParent.children.nonEmpty)
         updatedTree
@@ -160,7 +188,29 @@ case class ElmBlocktree private(
 
   private def isValid(block: ElmBlock): Boolean = {
     //TODO: implement fully
-    leaves(block.id.key)
+    applicable(block)
+  }
+
+  private def findStartingPoints(theseBlocks: Set[ByteKey], otherBlocks: Set[ByteKey]): List[ByteKey] =
+    if (theseBlocks.isEmpty) Nil else {
+      val diff = theseBlocks.diff(otherBlocks)
+      val parents = diff.map(blocks).map(_.parentId)
+      val found = parents.intersect(otherBlocks)
+      val deeper = parents.diff(found)
+      found.toList ::: findStartingPoints(deeper, otherBlocks)
+    }
+
+  private def findContinuations(nodeIds: List[ByteKey]): List[ByteKey] = {
+    val directChildren = for {
+      nodeId <- nodeIds
+      node <- blocks.get(nodeId).toList
+      childId <- node.children
+    } yield childId
+
+    if (directChildren.isEmpty)
+      Nil
+    else
+      directChildren ::: findContinuations(directChildren)
   }
 
 
