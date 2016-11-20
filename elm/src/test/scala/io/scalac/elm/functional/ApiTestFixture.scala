@@ -13,8 +13,11 @@ import scalaj.http.{Http, HttpOptions}
 
 trait ApiTestFixture extends FlatSpec with BeforeAndAfterAll {
 
+  // test running utils
+
   case class TestElmApp(appInfo: AppInfo, appConfig: AppConfig) extends ElmApp(appInfo, appConfig) {
 
+    // expose logger for test debugging
     override def log: Logger = super.log
 
     // to get rid of System.exit(0)
@@ -46,42 +49,57 @@ trait ApiTestFixture extends FlatSpec with BeforeAndAfterAll {
 
   lazy val node2Address = nodes.zip(nodes.map(getWalletAddress)).toMap
 
-  protected def getWalletAddress(node: TestElmApp) = Try {
-    val uri = s"http://localhost:${node2port(node)}/wallet/address"
-    node.log.debug(s"Trying to query wallet address: $uri")
-    val result = Http(uri).header("Accept", "text/plain").option(HttpOptions.readTimeout(queryTimeout)).asString.body
-    node.log.debug(s"Received $result from $uri")
-    result
-  } match {
-    case Success(value) => value
-    case Failure(error) => throw new IllegalStateException("All addresses should be known", error)
+  // API query utils
+
+  implicit class QueryApi(node: TestElmApp) {
+
+    def queryApi[Result](relUri: String, params: Map[String, String] = Map.empty, desc: String, errMsg: String)
+                        (parseResult: String => Result): Result = Try {
+      val uri = s"http://localhost:${node2port(node)}/$relUri"
+      node.log.debug(s"Trying to $desc: $uri")
+      val result = Http(uri)
+        .header("Accept", "text/plain")
+        .option(HttpOptions.readTimeout(queryTimeout))
+        .params(params)
+        .asString.body
+      node.log.debug(s"Received $result from $uri")
+      parseResult(result)
+    } match {
+      case Success(value) => value
+      case Failure(error) => throw new IllegalStateException(errMsg, error)
+    }
   }
 
-  protected def getWalletFunds(node: TestElmApp) = Try {
-    val uri = s"http://localhost:${node2port(node)}/wallet/funds"
-    node.log.debug(s"Trying to query wallet address: $uri")
-    val result = Http(uri).header("Accept", "text/plain").option(HttpOptions.readTimeout(queryTimeout)).asString.body
-    node.log.debug(s"Received $result from $uri")
-    result.toInt
-  } match {
-    case Success(value) => value
-    case Failure(error) => throw new IllegalStateException("Funds should be always accessible", error)
-  }
+  protected def getWalletAddress(node: TestElmApp) = node
+    .queryApi("wallet/address", desc = "query wallet address", errMsg = "All addresses should be known") {
+      ApiResponseDeserialization.toAddress
+    }
 
-  protected def makePayment(sender: TestElmApp, receiver: TestElmApp, amount: Int, fee: Int) = Try {
-    val uri = s"http://localhost:${node2port(sender)}/wallet/payment"
-    sender.log.debug(s"Trying to query wallet address: $uri")
-    val result = Http(uri).header("Accept", "text/plain").option(HttpOptions.readTimeout(queryTimeout))
-      .param("address", node2Address(receiver))
-      .param("amount", amount.toString)
-      .param("fee", fee.toString)
-      .asString.body
-    sender.log.debug(s"Received $result from $uri")
-    result
-  } match {
-    case Success(value) => value
-    case Failure(error) => throw new IllegalStateException("Payment call should always be possible", error)
-  }
+  protected def getWalletFunds(node: TestElmApp) = node
+    .queryApi("wallet/funds", desc = "query wallet funds", errMsg = "Funds should be always accessible") {
+      ApiResponseDeserialization.toFunds
+    }
+
+  protected def makePayment(sender: TestElmApp, receiver: TestElmApp, amount: Int, fee: Int) = sender
+    .queryApi("wallet/payment", desc = "make a payment", errMsg = "Payment should always be possible", params = Map(
+      "address" -> node2Address(receiver),
+      "amount"-> amount.toString,
+      "fee" -> fee.toString
+    )) {
+      ApiResponseDeserialization.toPayment
+    }
+
+  protected def getBlocks(node: TestElmApp) = node
+    .queryApi("blockchain/block", desc = "query blockchain", errMsg = "Blockchain should always be accessible") {
+      ApiResponseDeserialization.toBlockAddresses
+    }
+
+  protected def getTransaction(node: TestElmApp, blockId: String) = node
+    .queryApi(s"blockchain/block/$blockId", desc = s"query block", errMsg = "Block info should always be accessible") {
+      ApiResponseDeserialization.toBlock
+    }
+
+  // test bootstrap and teardown
 
   override protected def beforeAll(): Unit = nodes.map { node =>
     node.run()
