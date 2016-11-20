@@ -31,16 +31,6 @@ trait ApiTestFixture extends FlatSpec with BeforeAndAfterAll {
     }
   }
 
-  case class NodeExpectedState(funds: Int)
-
-  implicit class NodeExpectedStateUpdater(states: Map[TestElmApp, NodeExpectedState]) {
-
-    def fundsChangedBy(node: TestElmApp, change: Int): Map[TestElmApp, NodeExpectedState] = {
-      val state = states(node)
-      states.updated(node, state.copy(state.funds + change))
-    }
-  }
-
   val queryTimeout = 550
   val maxAttempts = 10
   val configs = (1 to 4).map(i => AppConfig.load(ConfigFactory.load(s"application-fuzzy-test-$i.conf")))

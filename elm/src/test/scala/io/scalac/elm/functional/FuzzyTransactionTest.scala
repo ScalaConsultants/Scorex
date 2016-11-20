@@ -5,7 +5,7 @@ import org.scalatest._
 import scala.annotation.tailrec
 import scala.util.Random
 
-class FuzzyTransactionTest extends ApiTestFixture with Matchers {
+class FuzzyTransactionTest extends ApiTestFixture with ApiStateTestFixture with Matchers {
 
   val maxFeePercentage = 0.1
   val maxAmountPercentage = 0.3
