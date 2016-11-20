@@ -152,7 +152,7 @@ case class ElmBlocktree private(
     }
   }
 
-  private def isValid(block: ElmBlock): Boolean = {
+  private def isValid(block: ElmBlock, minState: ElmMinState): Boolean = {
     // check block signature
     val pubKey = block.generator.pubKeyBytes
     val sygnature = block.generationSignature
@@ -163,7 +163,13 @@ case class ElmBlocktree private(
     lazy val parent = blocks.get(block.parentId.key).nonEmpty
 
     //transaction signatures
-    lazy val signed = false
+
+
+    //coinstake and one additional transacton
+    lazy val correctTransactionCount = block.transactions.exists(_.size >= 2)
+
+
+    lazy val signed = block.transactions.map(_.forall(t => minState.isValid(t))).getOrElse()
 
     // check transaction correctness
     // check coins take transaction correctness
