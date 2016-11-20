@@ -21,9 +21,7 @@ class Forger(viewHolderRef: ActorRef, appConfig: AppConfig) extends Actor with S
   import Forger._
   import context.dispatcher
 
-  //TODO: configure
-  val strategy: ForgingStrategy = SimpleForgingStrategy(1.5, 1, 10)
-
+  val strategy = ForgingStrategy(appConfig.forging.strategy)
   val blockGenerationDelay = appConfig.forging.delay
 
   override def preStart(): Unit = {
@@ -38,7 +36,7 @@ class Forger(viewHolderRef: ActorRef, appConfig: AppConfig) extends Actor with S
         leafId <- history.leaves
 
         parent = history.blocks(leafId)
-        fullState = fullStates(parent.id)
+        fullState = fullStates(leafId)
         memPool = fullState.memPool.merge(currentMemPool)
         wallet = currentWallet.scanOffchain(memPool.getAll)
         availableCoinage = wallet.accumulatedCoinAge(parent.height)
@@ -47,7 +45,8 @@ class Forger(viewHolderRef: ActorRef, appConfig: AppConfig) extends Actor with S
         ForgeParams(coinAge, transactions) <- strategy(availableCoinage, target, memPool)
       } {
         val coinstake = wallet.createCoinstake(coinAge, transactions.map(_.fee).sum, parent.height)
-        val unsigned = ElmBlock(parent.id.array, System.currentTimeMillis(), Array(), wallet.generator, coinstake +: transactions)
+        val unsigned = ElmBlock(parent.id.array, System.currentTimeMillis(), Array(), wallet.generator,
+          coinstake +: transactions).updateHeights(parent.height + 1)
         val signature = PrivateKey25519Companion.sign(wallet.secret, unsigned.bytes)
         val signedBlock = unsigned.copy(generationSignature = signature.signature)
 

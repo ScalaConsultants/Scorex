@@ -134,7 +134,7 @@ class NodeViewSynchronizer[P <: Proposition, TX <: Transaction[P], SI <: SyncInf
         case Younger =>
           juniors.add(remoteHost)
           assert(extOpt.isDefined)
-          val ext = extOpt.get
+          val ext = extOpt.toSeq.flatten
           ext.groupBy(_._1).mapValues(_.map(_._2)).foreach {
             case (mid, mods) =>
               networkControllerRef ! SendToNetwork(Message(InvSpec, Right(mid -> mods), None), SendToPeer(remote))

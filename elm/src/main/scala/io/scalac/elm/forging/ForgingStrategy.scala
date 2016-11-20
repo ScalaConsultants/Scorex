@@ -1,6 +1,17 @@
 package io.scalac.elm.forging
 
+import io.scalac.elm.config.AppConfig.{DumbForgingStrategyConf, ForgingStrategyConf, SimpleForgingStrategyConf}
 import io.scalac.elm.state.ElmMemPool
+
+object ForgingStrategy {
+  def apply(strategyConf: ForgingStrategyConf): ForgingStrategy = strategyConf match {
+    case SimpleForgingStrategyConf(targetRatio, minTxs, maxTxs) =>
+      SimpleForgingStrategy(targetRatio, minTxs, maxTxs)
+
+    case DumbForgingStrategyConf =>
+      DumbForgingStrategy
+  }
+}
 
 sealed trait ForgingStrategy {
 
@@ -23,7 +34,7 @@ case class SimpleForgingStrategy(targetRatio: Double, minTxs: Int, maxTxs: Int) 
   }
 }
 
-case class DumbForgingStrategy() extends ForgingStrategy {
+case object DumbForgingStrategy extends ForgingStrategy {
   def apply(availableCoinage: Long, targetScore: Long, memPool: ElmMemPool): Option[ForgeParams] =
     memPool.getAll.headOption
       .map(tx => ForgeParams(targetScore, Seq(tx)))

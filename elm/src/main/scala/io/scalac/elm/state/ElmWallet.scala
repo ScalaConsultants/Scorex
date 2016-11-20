@@ -131,7 +131,7 @@ case class ElmWallet(secret: PrivateKey25519 = generateSecret(),
   }
 
   private def coinAge(currentHeight: Int)(out: TxOutput): Long =
-    out.height.map(h => (currentHeight - h) * out.value).getOrElse(0L)
+    out.height.map(h => (currentHeight - h + 1) * out.value).getOrElse(0L)
 
 
 
