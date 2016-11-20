@@ -160,6 +160,11 @@ case class ElmBlocktree private(
     lazy val isSigned = Curve25519.verify(sygnature, message, pubKey)
 
     // check if parent exists
+    lazy val parent = blocks.get(block.parentId.key).nonEmpty
+
+    //transaction signatures
+    lazy val signed = false
+
     // check transaction correctness
     // check coins take transaction correctness
 
