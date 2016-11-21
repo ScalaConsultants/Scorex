@@ -24,5 +24,7 @@ package object util {
     def key: ByteKey = this
 
     def base58: String = Base58.encode(array)
+
+    override def toString: String = base58
   }
 }

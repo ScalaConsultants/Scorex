@@ -50,10 +50,10 @@ trait NodeViewHolder[P <: Proposition, TX <: Transaction[P], PMOD <: PersistentN
   val networkChunkSize = 100 //todo: make configurable?
 
   //todo: make configurable limited size
-  private val modifiersCache = mutable.Map[ModifierId, (ConnectedPeer, PMOD)]()
+  private val modifiersCache = mutable.Map[mutable.WrappedArray[Byte], (ConnectedPeer, PMOD)]()
 
   //mutable private node view instance
-  private var nodeView: NodeView = restoreState().getOrElse(genesisState)
+  protected var nodeView: NodeView = restoreState().getOrElse(genesisState)
 
   /**
     * Hard-coded initial view all the honest nodes in a network are making progress from.
@@ -67,20 +67,20 @@ trait NodeViewHolder[P <: Proposition, TX <: Transaction[P], PMOD <: PersistentN
   def restoreState(): Option[NodeView]
 
 
-  private def history(): HIS = nodeView._1
+  protected def history(): HIS = nodeView._1
 
-  private def minimalState(): MS = nodeView._2
+  protected def minimalState(): MS = nodeView._2
 
-  private def vault(): VL = nodeView._3
+  protected def vault(): VL = nodeView._3
 
-  private def memoryPool(): MP = nodeView._4
+  protected def memoryPool(): MP = nodeView._4
 
   private val subscribers = mutable.Map[NodeViewHolder.EventType.Value, Seq[ActorRef]]()
 
-  private def notifySubscribers[O <: NodeViewHolderEvent](eventType: EventType.Value, signal: O) =
+  protected def notifySubscribers[O <: NodeViewHolderEvent](eventType: EventType.Value, signal: O) =
     subscribers.getOrElse(eventType, Seq()).foreach(_ ! signal)
 
-  private def txModify(tx: TX, source: Option[ConnectedPeer]) = {
+  protected def txModify(tx: TX, source: Option[ConnectedPeer]) = {
     val updWallet = vault().scanOffchain(tx)
     memoryPool().put(tx) match {
       case Success(updPool) =>
@@ -93,7 +93,7 @@ trait NodeViewHolder[P <: Proposition, TX <: Transaction[P], PMOD <: PersistentN
     }
   }
 
-  private def pmodModify(pmod: PMOD, source: Option[ConnectedPeer]): Unit = {
+  protected def pmodModify(pmod: PMOD, source: Option[ConnectedPeer]): Unit = {
     notifySubscribers(
       EventType.StartingPersistentModifierApplication,
       StartingPersistentModifierApplication[P, TX, PMOD](pmod)
@@ -188,11 +188,7 @@ trait NodeViewHolder[P <: Proposition, TX <: Transaction[P], PMOD <: PersistentN
             modifiersCache.put(pmod.id, remote -> pmod)
         }
 
-        log.info(s"Cache before(${modifiersCache.size}): ${modifiersCache.keySet.map(Base58.encode).mkString(",")}")
-
-        modifiersCache.find(_._1 sameElements Base58.decode("1dd9Hfg6DFDdaM4BUMq5hP9nm2cWzYS1KmdmTamCYyZ").get).map{ gb =>
-          println("genesis arrived: " + gb)
-        }
+        log.info(s"Cache before(${modifiersCache.size}): ${modifiersCache.keySet.map(a => Base58.encode(a.array)).mkString(",")}")
 
         var t: Option[(ConnectedPeer, PMOD)] = None
         do {
@@ -208,7 +204,7 @@ trait NodeViewHolder[P <: Proposition, TX <: Transaction[P], PMOD <: PersistentN
           t.foreach { case (peer, pmod) => pmodModify(pmod, Some(peer)) }
         } while (t.isDefined)
 
-        log.debug(s"Cache after(${modifiersCache.size}): ${modifiersCache.keySet.map(Base58.encode).mkString(",")}")
+        log.debug(s"Cache after(${modifiersCache.size}): ${modifiersCache.keySet.map(a => Base58.encode(a.array)).mkString(",")}")
       }
   }
 
@@ -226,7 +222,7 @@ trait NodeViewHolder[P <: Proposition, TX <: Transaction[P], PMOD <: PersistentN
       sender() ! CurrentView(history(), minimalState(), vault(), memoryPool())
   }
 
-  private def compareSyncInfo: Receive = {
+  protected def compareSyncInfo: Receive = {
     case OtherNodeSyncingInfo(remote, syncInfo: SI) =>
       log.debug(s"Comparing remote info having starting points: ${syncInfo.startingPoints.map(_._2).map(Base58.encode)}")
       log.debug(s"Local side contains head: ${history().contains(syncInfo.startingPoints.map(_._2).head)}")
@@ -303,10 +299,10 @@ object NodeViewHolder {
   }
 
   case class FailedTransaction[P <: Proposition, TX <: Transaction[P]]
-  (transaction: TX, error: Throwable, override val source: Option[ConnectedPeer]) extends ModificationOutcome
+  (transaction: TX, error: Any, override val source: Option[ConnectedPeer]) extends ModificationOutcome
 
   case class FailedModification[P <: Proposition, TX <: Transaction[P], PMOD <: PersistentNodeViewModifier[P, TX]]
-  (modifier: PMOD, error: Throwable, override val source: Option[ConnectedPeer]) extends ModificationOutcome
+  (modifier: PMOD, error: Any, override val source: Option[ConnectedPeer]) extends ModificationOutcome
 
   case class SuccessfulTransaction[P <: Proposition, TX <: Transaction[P]]
   (transaction: TX, override val source: Option[ConnectedPeer]) extends ModificationOutcome

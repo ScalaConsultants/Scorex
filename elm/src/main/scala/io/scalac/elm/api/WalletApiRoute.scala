@@ -1,20 +1,22 @@
 package io.scalac.elm.api
 
-import javax.ws.rs.{Path, Produces, QueryParam}
+import javax.ws.rs.{Path, Produces}
 
 import akka.actor.{ActorRef, ActorRefFactory}
 import akka.http.scaladsl.server.Route
 import akka.pattern.ask
-import io.scalac.elm.state.ElmWallet
+import io.scalac.elm.core.ElmNodeViewHolder.{GetWalletForTransaction, ReturnWallet, WalletForTransaction}
+import io.scalac.elm.history.ElmBlocktree
+import io.scalac.elm.state.{ElmMemPool, ElmMinState, ElmWallet}
 import io.scalac.elm.transaction.ElmTransaction
+import io.scalac.elm.util.ByteKey
 import io.swagger.annotations._
 import scorex.core.LocalInterface.LocallyGeneratedTransaction
 import scorex.core.NodeViewHolder
-import scorex.core.NodeViewHolder.CurrentView
+import scorex.core.NodeViewHolder.{CurrentView, GetCurrentView}
 import scorex.core.api.http.ApiRoute
 import scorex.core.settings.Settings
 import scorex.core.transaction.box.proposition.PublicKey25519Proposition
-import scorex.crypto.encode.Base58
 
 import scala.concurrent.Future
 
@@ -34,23 +36,25 @@ class WalletApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(implicit 
   @ApiImplicitParams(Array(
     new ApiImplicitParam(name = "address", required = true, dataType = "string", paramType = "query", value = "XxYyZz"),
     new ApiImplicitParam(name = "amount", required = true, dataType = "integer", paramType = "query", value = "1000"),
-    new ApiImplicitParam(name = "priority", required = true, dataType = "integer", paramType = "query", value = "1")
+    new ApiImplicitParam(name = "fee", required = true, dataType = "integer", paramType = "query", value = "10")
   ))
   @ApiResponses(Array(
     new ApiResponse(code = 200, message = "OK")
   ))
   def payment: Route = get {
     path("payment") {
-      parameter("address", "amount".as[Long], "priority".as[Int]) { (address, amount, priority) =>
+      parameter("address", "amount".as[Long], "fee".as[Int]) { (address, amount, fee) =>
         complete {
-          val recipient = PublicKey25519Proposition(Base58.decode(address).get)
-          getWallet.map(_.createPayment(recipient, amount, priority) match {
-            case Some(payment) =>
-              nodeViewHolder ! LocallyGeneratedTransaction[PublicKey25519Proposition, ElmTransaction](payment)
-              "OK"
-            case None =>
-              "Insufficient funds"
-          })
+          val recipient = PublicKey25519Proposition(ByteKey.base58(address).array)
+          getWalletForTx.map {
+            case WalletForTransaction(Some(wallet), height) =>
+              val maybePayment = wallet.createPayment(recipient, amount, fee, height)
+              nodeViewHolder ! ReturnWallet(maybePayment)
+              maybePayment.map(200 -> _.id.base58).getOrElse(400 -> "Insufficient funds")
+
+            case WalletForTransaction(None, _) =>
+              400 -> "Wallet locked"
+          }
         }
       }
     }
@@ -65,7 +69,7 @@ class WalletApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(implicit 
   def address: Route = get {
     path("address") {
       complete {
-        getWallet.map(w => Base58.encode(w.secret.publicKeyBytes))
+        getWallet.map(_.secret.publicKeyBytes.base58)
       }
     }
   }
@@ -90,10 +94,16 @@ class WalletApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(implicit 
   ))
   def coinage: Route = get {
     path("coinage") {
-      complete(getWallet.map(_.accumulatedCoinAge.toString))
+      complete(getView.map(v => v.vault.accumulatedCoinAge(v.history.height).toString))
     }
   }
 
+  def getView: Future[CurrentView[ElmBlocktree, ElmMinState, ElmWallet, ElmMemPool]] =
+    nodeViewHolder.ask(GetCurrentView).mapTo[CurrentView[ElmBlocktree, ElmMinState, ElmWallet, ElmMemPool]]
+
   def getWallet: Future[ElmWallet] =
-    nodeViewHolder.ask(NodeViewHolder.GetCurrentView).mapTo[CurrentView[_, _, ElmWallet, _]].map(_.vault)
+    getView.map(_.vault)
+
+  def getWalletForTx: Future[WalletForTransaction] =
+    nodeViewHolder.ask(GetWalletForTransaction).mapTo[WalletForTransaction]
 }
