@@ -10,6 +10,8 @@ import scorex.core.NodeViewComponentCompanion
 import scorex.core.consensus.BlockChain
 import scorex.core.consensus.History.{BlockId, HistoryComparisonResult, RollbackTo}
 import scorex.core.transaction.box.proposition.PublicKey25519Proposition
+import scorex.crypto.signatures.Curve25519
+import scorex.crypto.signatures.SigningFunctions._
 
 import scala.annotation.tailrec
 import scala.util.Try
@@ -187,8 +189,58 @@ case class ElmBlocktree private(
   }
 
   private def isValid(block: ElmBlock): Boolean = {
-    //TODO: implement fully
-    applicable(block)
+    // check block signature
+    val generatorPubKey = block.generator.pubKeyBytes
+    val sygnature = block.generationSignature
+    val message = block.bytes
+    lazy val isSigned = Curve25519.verify(sygnature, message, generatorPubKey)
+
+    //coinstake and one additional transacton
+    lazy val correctTransactionCount = block.transactions.exists(_.size >= 2)
+
+
+    val txi = block.transactions.map(_.flatMap(_.inputs)).getOrElse(Seq.empty)
+    val txiIds = txi.map(_.closedBoxId)
+
+
+    lazy val onDoubleSpend =
+      chainOf(block.id).flatMap(_.block.transactions).flatten.flatMap(_.inputs).map(_.closedBoxId).forall(t => !txiIds.contains(t)) &&
+        txiIds.distinct.size == txiIds.size
+
+    val txoForBlock = chainOf(block.id).flatMap(_.block.transactions).flatten.flatMap(_.outputs).filter(txo => txiIds.contains(txo.id)).toList
+
+    lazy val transactionValid:Boolean = block.transactions.exists {
+      case coinstake :: regularTxs =>
+        isCoinstakeValid(coinstake, generatorPubKey, regularTxs) && regularTxs.forall(isTransactionValid)
+    }
+
+    //Curve25519.verify()
+    //out.map(o => Curve25519.verify(in.boxKey.signature, o.bytes, o.proposition.pubKeyBytes)).exists(identity)
+
+
+    applicable(block) && isSigned && correctTransactionCount && onDoubleSpend && transactionValid
+  }
+
+  private def isCoinstakeValid(coinstake: ElmTransaction, generatorPubKey: PublicKey, regularTxs: Seq[ElmTransaction]): Boolean = {
+    val validCoinstakeFee = coinstake.fee == 0
+
+
+
+
+    //val signed = coinstake.inputs.forall(txi => Curve25519.verify(txi.boxKey.signature, txi.bytes, generatorPubKey))
+
+
+//    regularTxs.map(tx => (tx.))
+//
+//    coinstake.inputs.forall(t => )
+//
+    //val validCoinstake = (regularTxs.map(_.fee).sum + coinstake.inputs.) == coinstake.outputs.map(_.value).sum
+
+
+  }
+
+  private def isTransactionValid(regularTx: ElmTransaction): Boolean = {
+    true
   }
 
   private def findStartingPoints(theseBlocks: Set[ByteKey], otherBlocks: Set[ByteKey]): List[ByteKey] =
