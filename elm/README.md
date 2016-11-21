@@ -41,6 +41,19 @@
     
    In configuration it is set that node1 generates genesis block and adds to its wallet 10000 coins
     
+### Api endpoints
+    
+#### `/wallet`
+This is main endpoint used to interact with application, it allows user to check wallet balance and make payments.
+
+- `GET /wallet/address` - returns address for wallet associated with given node that can be use to perform payments
+
+- `GET /wallet/funds` - returns amount of funds that is associated with wallet associated with given node
+
+- `GET /wallet/payment` - performs payment to specified `address`, payment requires to specify positive values for `amount` (coins that are transferred to address) and `fee` (coins for node that will forge block) 
+
+- `GET /wallet/coinage` - returns amount of coinage that is associated with wallet associated with given node that can be used for mining
+
 ### Configuration
 `elm` is root for configuration for this project
 There are 4 sections inside it:
