@@ -79,6 +79,8 @@ This endpoint is for getting information about peers that participates in networ
 - `GET /peers/all` - return list of all known pears
 
 ### Configuration
+Configuration is encoded using HOCON (Human-Optimized Config Object Notation), since valid JSON is also valid HOCON, `elm` configuration is added next to existing `Scorex` configuration.
+
 `elm` is root for configuration for this project
 There are 4 sections inside it:
  - `node` which has basic information about particular node
