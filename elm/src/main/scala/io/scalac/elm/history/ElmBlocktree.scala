@@ -194,17 +194,12 @@ case class ElmBlocktree private(
     val message = block.bytes
     lazy val isSigned = Curve25519.verify(sygnature, message, pubKey)
 
-    // check if parent exists
-    lazy val parent = blocks.get(block.parentId.key).nonEmpty
-
-    //transaction signatures
-
 
     //coinstake and one additional transacton
     lazy val correctTransactionCount = block.transactions.exists(_.size >= 2)
 
 
-    lazy val signed = block.transactions.map(_.forall(t => minState.isValid(t))).getOrElse()
+    lazy val transactionSignd = block.transactions.map(_.forall(t => minState.isValid(t))).getOrElse()
 
     // check transaction correctness
     // check coins take transaction correctness
@@ -215,7 +210,7 @@ case class ElmBlocktree private(
     //out.map(o => Curve25519.verify(in.boxKey.signature, o.bytes, o.proposition.pubKeyBytes)).exists(identity)
 
 
-    applicable(block)
+    applicable(block) && isSigned && correctTransactionCount && transactionSignd
   }
 
   private def findStartingPoints(theseBlocks: Set[ByteKey], otherBlocks: Set[ByteKey]): List[ByteKey] =
