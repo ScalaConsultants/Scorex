@@ -45,8 +45,10 @@ case class ElmMemPool(offchainTxs: Map[ByteKey, ElmTransaction] = Map.empty) ext
     offchainTxs.filter(kv => idSet(kv._1)).values.toSeq
   }
 
-  def getAll: Seq[ElmTransaction] = offchainTxs.values.toSeq
+  def getAll: Iterable[ElmTransaction] = offchainTxs.values
 
+  def merge(other: ElmMemPool): ElmMemPool =
+    ElmMemPool(offchainTxs ++ other.offchainTxs)
 
 
   @deprecated("unnecessary", "")
