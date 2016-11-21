@@ -67,6 +67,17 @@ This endpoint is for getting information about blocktree, it allows quering spec
 
 - `GET /blocktree/block/{id}` - returns block form block tree by given id (block with transactions in json format)
 
+#### `/peers`
+This endpoint is for getting information about peers that participates in network
+
+- `GET /peers/connected` - return list of peers connected to given node 
+
+- `GET /peers/blacklisted` - returns blacklisted pears
+
+- `POST /peers/connect` - connects to specific node by ip address and port, example content of request: `{"host":"127.0.0.1", "port":"9084"}` 
+
+- `GET /peers/all` - return list of all known pears
+
 ### Configuration
 `elm` is root for configuration for this project
 There are 4 sections inside it:
@@ -129,9 +140,8 @@ There are 4 sections inside it:
     
     `delay` - delay between 2 consecutive block forging attempts
     
-    `strategy` - name of strategy that should be used for forging new block currently there are 2 available: `simple-forging-strategy` and `dumb-forging-strategy`
-    
-    `base-target` - it is target score of coinage that should be spent when forging new block, currently it's constant, but nodes can choose to spend more
+    `strategy` - name of strategy that should be used for forging new block currently there are 2 available: `simple-forging-strategy` and `dumb-forging-strategy`. 
+    Depending on selected `strategy` there can be further configuration. 
     
     example:
     ```
