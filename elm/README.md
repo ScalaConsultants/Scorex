@@ -108,11 +108,11 @@ There are 4 sections inside it:
     }
     ```
     
-- `consensus` which holds configuration for creating genesis block
+- `consensus` configuration defining parameters of blocktree and coinage spent on blocks
     
     `N` - max number of branches in blocktree
     
-    `confirmation-depth` - 
+    `confirmation-depth` - unused for now
     
     `base-target` - it is target score of coinage that should be spent when forging new block, currently it's constant, but nodes can choose to spend more
     
@@ -124,6 +124,32 @@ There are 4 sections inside it:
         base-target = 100
     }
     ```
+    
+- `forging` configuration defining forging new blocks
+    
+    `delay` - delay between 2 consecutive block forging attempts
+    
+    `strategy` - name of strategy that should be used for forging new block currently there are 2 available: `simple-forging-strategy` and `dumb-forging-strategy`
+    
+    `base-target` - it is target score of coinage that should be spent when forging new block, currently it's constant, but nodes can choose to spend more
+    
+    example:
+    ```
+    forging {
+        delay = 10s
+        strategy = "simple-forging-strategy"
+        simple-forging-strategy {
+          target-ratio = 1.0
+          min-transactions = 1
+          max-transactions = 100
+        }
+      }
+    ```    
+    
+    
+    
+    
+    
     
 # 5. Testing
     TODO
