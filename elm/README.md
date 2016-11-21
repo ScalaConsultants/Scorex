@@ -45,10 +45,15 @@
 `elm` is root for configuration for this project
 There are 4 sections inside it:
  - `node` which has basic information about particular node
-    `app-name` and `name` are strings used to derive name that is given to akka actor system that is created for given node.
-    `version` is value that has to be 3 numbers separated with dots like `1.1.1` this value is passed to NetworkController and than used for handshake with other nodes
-    `shutdown-hook` is boolean value used to indicate that after application shutdown there should be message logged (in our case).
-    `key-pair-seed` is bas58 encoded value that is used to deterministically generate secret for wallet associated with given node
+ 
+    `app-name` and `name` - strings used to derive name that is given to akka actor system that is created for given node.
+ 
+    `version` - value that has to be 3 numbers separated with dots like `1.1.1` this value is passed to NetworkController and than used for handshake with other nodes
+    
+    `shutdown-hook` - boolean value used to indicate that after application shutdown there should be message logged (in our case).
+    
+    `key-pair-seed` - bas58 encoded value that is used to deterministically generate secret for wallet associated with given node
+    
     example:
     ```
     node {
@@ -60,10 +65,15 @@ There are 4 sections inside it:
     }
     ```
  - `genesis` which holds configuration for creating genesis block
-    `generate` is boolean value that indicates if genesis block should be created for given node, it should be set to `true` only for one node
+    
+    `generate` - boolean value that indicates if genesis block should be created for given node, it should be set to `true` only for one node
     example:
-    `initial-funds` is amount of conis that will be added to wallet in genesis transaction
-    `grains` is size of TXOs that will be added in genesis block, for example if `initial-funds` is set to 100 and `grains` is set to 10 there will be 10 txo in genesis block everyone will have 10 coins.
+    
+    `initial-funds` - amount of conis that will be added to wallet in genesis transaction
+    
+    `grains` - size of TXOs that will be added in genesis block, for example if `initial-funds` is set to 100 and `grains` is set to 10 there will be 10 txo in genesis block everyone will have 10 coins.
+    
+    example:
     ```
     genesis {
         generate = false
