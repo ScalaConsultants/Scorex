@@ -1,6 +1,5 @@
 package io.scalac.elm.state
 
-import io.scalac.elm.state.ElmWallet._
 import io.scalac.elm.transaction.{ElmBlock, ElmTransaction, TxInput, TxOutput}
 import io.scalac.elm.util._
 import scorex.core.NodeViewComponentCompanion
@@ -16,19 +15,18 @@ import scorex.utils.Random
 import scala.util.Try
 
 object ElmWallet {
+  def empty(keyPairSeed: Array[Byte]): ElmWallet =
+    ElmWallet(secret = generateSecret(keyPairSeed))
+
   def generateSecret(seed: Array[Byte] = Random.randomBytes(PrivKeyLength)): PrivateKey25519 = {
     val pair = Curve25519.createKeyPair(seed)
     PrivateKey25519(pair._1, pair._2)
   }
 }
 
-/**
-  * @param secret key pair
-  * @param chainTxOutputs stores confirmed unspent outputs relevant to this Wallet
-  * @param currentBalance sum of confirmed unspent outputs
-  */
-case class ElmWallet(secret: PrivateKey25519 = generateSecret(),
+case class ElmWallet(secret: PrivateKey25519,
                      chainTxOutputs: Map[ByteKey, TxOutput] = Map.empty,
+                     offchainTxOutputs: Set[ByteKey] = Set.empty,
                      currentBalance: Long = 0)
   extends Wallet[PublicKey25519Proposition, ElmTransaction, ElmBlock, ElmWallet] {
 
@@ -52,19 +50,21 @@ case class ElmWallet(secret: PrivateKey25519 = generateSecret(),
     val reducedChainTxOuts = chainTxOutputs -- outIds
 
     //TODO how to restore balance when transactions are forgotten?
-    ElmWallet(secret, reducedChainTxOuts, currentBalance - sum)
+    ElmWallet(secret, reducedChainTxOuts, offchainTxOutputs ++ outIds, currentBalance - sum)
   }
 
   def scanOffchain(txs: Traversable[ElmTransaction]): ElmWallet =
     txs.foldLeft(this)((w, tx) => w.scanOffchain(tx))
 
   override def scanPersistent(block: ElmBlock): ElmWallet = {
+    val reducedOffchain = offchainTxOutputs -- block.txs.flatMap(_.outputs).map(_.id.key)
+
     val income = for {
       tx <- block.txs
-      out <- tx.outputs if out.proposition.pubKeyBytes.key == pubKeyBytes
+      out <- tx.outputs
+      if out.proposition.pubKeyBytes.key == pubKeyBytes && !reducedOffchain(out.id.key)
     } yield out.id.key -> out
 
-    val incomeSum = income.map(_._2.value).sum
 
     val outgoings = for {
       tx <- block.txs
@@ -72,16 +72,15 @@ case class ElmWallet(secret: PrivateKey25519 = generateSecret(),
       out <- chainTxOutputs.get(in.closedBoxId.key)
     } yield out.id.key
 
-    val outgoingSum = outgoings.map(chainTxOutputs).map(_.value).sum
+    val updatedChainTxOutputs = chainTxOutputs -- outgoings ++ income
+    val newBalance = updatedChainTxOutputs.values.map(_.value).sum
 
-    ElmWallet(secret, chainTxOutputs -- outgoings ++ income, currentBalance - outgoingSum + incomeSum)
+    ElmWallet(secret, updatedChainTxOutputs, reducedOffchain, newBalance)
   }
 
   def accumulatedCoinAge(currentHeight: Int): Long =
     chainTxOutputs.values.map(coinAge(currentHeight)).sum
 
-  //FIXME: there is a possible race condition, the same wallet should not create more than 1 TX
-  //FIXME: solution: lock wallet in ElmNodeViewHolder
   def createPayment(payee: PublicKey25519Proposition, amount: Long, fee: Long, currentHeight: Int): Option[ElmTransaction] = {
     //use newest outputs to save coin-age for mining
     val sortedOuts = chainTxOutputs.values.toList.sortBy(coinAge(currentHeight)).reverse

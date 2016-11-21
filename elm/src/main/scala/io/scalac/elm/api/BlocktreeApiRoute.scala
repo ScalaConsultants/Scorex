@@ -4,7 +4,7 @@ import javax.ws.rs.Path
 
 import akka.actor.{ActorRef, ActorRefFactory}
 import akka.http.scaladsl.marshalling.{Marshaller, ToEntityMarshaller}
-import akka.http.scaladsl.model.{ContentTypes, MediaTypes}
+import akka.http.scaladsl.model.MediaTypes
 import akka.http.scaladsl.server._
 import akka.pattern.ask
 import io.circe._
@@ -27,7 +27,7 @@ class BlocktreeApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(implic
     Marshaller.StringMarshaller.wrap(MediaTypes.`application/json`)(_.spaces4)
 
   override lazy val route: Route = pathPrefix("blocktree") {
-    mainchain ~ block ~ chain ~ blocksOfChain
+    mainchain ~ leaves ~ block ~ chain ~ blocksOfChain
   }
 
   @Path("/mainchain")
@@ -39,6 +39,19 @@ class BlocktreeApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(implic
     path("mainchain") {
       complete {
         getBlocktree.map(_.mainChain.toList.map(_.id.base58).asJson)
+      }
+    }
+  }
+
+  @Path("/leaves")
+  @ApiOperation(value = "get leaves", httpMethod = "GET")
+  @ApiResponses(Array(
+    new ApiResponse(code = 200, message = "list of blocktree leaves")
+  ))
+  def leaves: Route = get {
+    path("leaves") {
+      complete {
+        getBlocktree.map(_.sortedLeaves.map(_.base58).asJson)
       }
     }
   }
