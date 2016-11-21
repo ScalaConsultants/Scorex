@@ -8,6 +8,7 @@ import akka.pattern.ask
 import io.scalac.elm.history.ElmBlocktree
 import io.scalac.elm.state.{ElmMemPool, ElmMinState, ElmWallet}
 import io.scalac.elm.transaction.ElmTransaction
+import io.scalac.elm.util.ByteKey
 import io.swagger.annotations._
 import scorex.core.LocalInterface.LocallyGeneratedTransaction
 import scorex.core.NodeViewHolder
@@ -68,7 +69,7 @@ class WalletApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(implicit 
   def address: Route = get {
     path("address") {
       complete {
-        getWallet.map(w => Base58.encode(w.secret.publicKeyBytes))
+        getWallet.map(w => w.secret.publicKeyBytes.base58)
       }
     }
   }

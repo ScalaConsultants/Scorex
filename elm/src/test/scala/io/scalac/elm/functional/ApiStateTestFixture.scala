@@ -17,9 +17,9 @@ trait ApiStateTestFixture { self: ApiTestFixture =>
          | * send transactions:
          |    ${sent.mkString("\n    ")}
          | * received transactions:
-         |    ${sent.mkString("\n    ")}
+         |    ${received.mkString("\n    ")}
          | * fees:
-         |    ${sent.mkString("\n    ")}
+         |    ${fees.mkString("\n    ")}
        """.stripMargin
   }
 
