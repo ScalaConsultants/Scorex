@@ -40,51 +40,5 @@
         }
         ```
     
-    
-    ```
-    elm {
-      consensus {
-        N = 8
-        confirmation-depth = 1
-        base-target = 100
-      }
-    
-      forging {
-        delay = 10s
-        strategy = ["simple-forging-strategy"|"dumb-forging-strategy"]
-        simple-forging-strategy {
-          target-ratio = 1.0
-          min-transactions = 1
-          max-transactions = 100
-        }
-      }
-    }
-    
-    scorex {
-      fastHash = "scorex.crypto.hash.Blake256"
-      secureHash = "scorex.crypto.hash.ScorexHashChain"
-    
-      p2p =  {
-        bindAddress = 0.0.0.0
-        upnp = false
-        upnpGatewayTimeout = 7000
-        upnpDiscoverTimeout = 3000
-        port = 9084
-        knownPeers = []
-        maxConnections =  10
-      }
-    
-      walletDir = "/tmp/scorex/wallet"
-      dataDir = "/tmp/scorex/data"
-      rpcPort = 9085
-      rpcAllowed = []
-      maxRollback = 100
-      blockGenerationDelay = 0
-      genesisTimestamp = 1460952000000
-      apiKeyHash = GmVvcpx1BRUPDZiADbZ7a6zgQV3Sgj2GhNoEiTH9Drdx
-      cors = false
-    }
-    ```
-    
 5. Testing
 6. Conclusions
