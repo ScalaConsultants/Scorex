@@ -33,13 +33,13 @@
    ```
    After that every node will start http server with swagger accessible at url as follows: 
 
-    ```
-    node1 http://localhost:9085/swagger
-    node2 http://localhost:9087/swagger
-    node3 http://localhost:9089/swagger
-    ```
+   ```
+   node1 http://localhost:9085/swagger
+   node2 http://localhost:9087/swagger
+   node3 http://localhost:9089/swagger
+   ```
     
-    In configuration it is set that node1 generates genesis block and adds to its wallet 10000 coins
+   In configuration it is set that node1 generates genesis block and adds to its wallet 10000 coins
     
   - Configuration
     
