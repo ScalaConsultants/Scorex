@@ -35,12 +35,12 @@
         </encoder>
     </appender>
 
-    <root>
+    <root level="WARN">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="ERRFILE"/>
         <appender-ref ref="LOGFILE"/>
     </root>
 
-    <logger name="scorex" level="WARN" />
+    <logger name="io.scalac.elm.functional.ApiTestFixture$TestElmApp" level="TRACE" />
 
 </configuration>
