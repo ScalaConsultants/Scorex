@@ -8,7 +8,20 @@ trait ApiStateTestFixture { self: ApiTestFixture =>
       sent: Map[String, Long] = Map.empty,
       received: Map[String, Long] = Map.empty,
       fees: Map[String, Long] = Map.empty
-  )
+  ) {
+
+    override def toString: String =
+      s"""Node expected state:
+         | * initial funds:     $initialFunds
+         | * estimated funds    $estimatedFunds
+         | * send transactions:
+         |    ${sent.mkString("\n    ")}
+         | * received transactions:
+         |    ${sent.mkString("\n    ")}
+         | * fees:
+         |    ${sent.mkString("\n    ")}
+       """.stripMargin
+  }
 
   implicit class NodeExpectedStateUpdater(states: Map[TestElmApp, NodeExpectedState]) {
 
