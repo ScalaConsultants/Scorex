@@ -50,7 +50,7 @@ trait NodeViewHolder[P <: Proposition, TX <: Transaction[P], PMOD <: PersistentN
   val networkChunkSize = 100 //todo: make configurable?
 
   //todo: make configurable limited size
-  private val modifiersCache = mutable.Map[ModifierId, (ConnectedPeer, PMOD)]()
+  private val modifiersCache = mutable.Map[mutable.WrappedArray[Byte], (ConnectedPeer, PMOD)]()
 
   //mutable private node view instance
   protected var nodeView: NodeView = restoreState().getOrElse(genesisState)
@@ -188,7 +188,7 @@ trait NodeViewHolder[P <: Proposition, TX <: Transaction[P], PMOD <: PersistentN
             modifiersCache.put(pmod.id, remote -> pmod)
         }
 
-        log.info(s"Cache before(${modifiersCache.size}): ${modifiersCache.keySet.map(Base58.encode).mkString(",")}")
+        log.info(s"Cache before(${modifiersCache.size}): ${modifiersCache.keySet.map(a => Base58.encode(a.array)).mkString(",")}")
 
         var t: Option[(ConnectedPeer, PMOD)] = None
         do {
@@ -204,7 +204,7 @@ trait NodeViewHolder[P <: Proposition, TX <: Transaction[P], PMOD <: PersistentN
           t.foreach { case (peer, pmod) => pmodModify(pmod, Some(peer)) }
         } while (t.isDefined)
 
-        log.debug(s"Cache after(${modifiersCache.size}): ${modifiersCache.keySet.map(Base58.encode).mkString(",")}")
+        log.debug(s"Cache after(${modifiersCache.size}): ${modifiersCache.keySet.map(a => Base58.encode(a.array)).mkString(",")}")
       }
   }
 
@@ -222,7 +222,7 @@ trait NodeViewHolder[P <: Proposition, TX <: Transaction[P], PMOD <: PersistentN
       sender() ! CurrentView(history(), minimalState(), vault(), memoryPool())
   }
 
-  private def compareSyncInfo: Receive = {
+  protected def compareSyncInfo: Receive = {
     case OtherNodeSyncingInfo(remote, syncInfo: SI) =>
       log.debug(s"Comparing remote info having starting points: ${syncInfo.startingPoints.map(_._2).map(Base58.encode)}")
       log.debug(s"Local side contains head: ${history().contains(syncInfo.startingPoints.map(_._2).head)}")

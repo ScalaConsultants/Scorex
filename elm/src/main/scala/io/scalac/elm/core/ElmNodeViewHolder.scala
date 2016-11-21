@@ -10,6 +10,7 @@ import io.scalac.elm.util._
 import scorex.core.NodeViewHolder._
 import scorex.core.NodeViewModifier.ModifierTypeId
 import scorex.core.network.ConnectedPeer
+import scorex.core.network.NodeViewSynchronizer.OtherNodeSyncingInfo
 import scorex.core.transaction.Transaction
 import scorex.core.transaction.box.proposition.PublicKey25519Proposition
 import scorex.core.transaction.state.PrivateKey25519Companion
@@ -19,14 +20,22 @@ import scorex.crypto.encode.Base58
 import scala.collection.mutable
 
 object ElmNodeViewHolder {
-  case class FullState(minState: ElmMinState, wallet: ElmWallet, memPool: ElmMemPool)
 
+  /**
+    * Info about the current view with the history of FullStates included.
+    * This probably exposes too much, but importantly fullStates are immutable.
+    */
+  case class FullView(history: ElmBlocktree, minState: ElmMinState, wallet: ElmWallet,
+    memPool: ElmMemPool, fullStates: Map[ByteKey, FullState])
+  case object GetFullView
+
+  case class FullState(minState: ElmMinState, wallet: ElmWallet, memPool: ElmMemPool)
   val zeroFullState = FullState(ElmMinState(), ElmWallet(), ElmMemPool())
 }
 
-class ElmNodeViewHolder(appConfig: AppConfig) extends NodeViewHolder[PublicKey25519Proposition, ElmTransaction, ElmBlock] {
-
+class ElmNodeViewHolder(appConfig: AppConfig) extends {
   private val state: mutable.Map[ByteKey, FullState] = mutable.Map.empty
+} with NodeViewHolder[PublicKey25519Proposition, ElmTransaction, ElmBlock] {
 
   override type SI = ElmSyncInfo
 
@@ -45,10 +54,14 @@ class ElmNodeViewHolder(appConfig: AppConfig) extends NodeViewHolder[PublicKey25
       Transaction.ModifierTypeId -> ElmTransaction
     )
 
+  override def receive: Receive =
+    getFullView orElse super.receive
+
   override def restoreState(): Option[(HIS, MS, VL, MP)] = None
 
   override protected def genesisState: (HIS, MS, VL, MP) = {
 
+    val zeroBlocktree = ElmBlocktree.zero(appConfig.consensus)
     val emptyMinState = zeroFullState.minState
     val emptyWallet = zeroFullState.wallet
     val emptyMemPool = zeroFullState.memPool
@@ -58,28 +71,27 @@ class ElmNodeViewHolder(appConfig: AppConfig) extends NodeViewHolder[PublicKey25
     if (appConfig.genesis.generate) {
       val initialAmount = appConfig.genesis.initialFunds
 
-      //TODO: configure
       // we generate a bunch of outputs because of coinage destruction problem
       // another way to approach this would be to retain age of coinstake change, but that would require outputs to be explicitly timestamped
-      val grains = 10
+      val grains = appConfig.genesis.grains
       val genesisTx = ElmTransaction(Nil, List.fill(grains)(TxOutput(initialAmount / grains, emptyWallet.secret.publicImage)), 0, System.currentTimeMillis)
 
-      val unsignedBlock: ElmBlock = ElmBlock(ElmBlock.zero.id, 0L, Array(), emptyWallet.generator, Seq(genesisTx))
+      val unsignedBlock: ElmBlock = ElmBlock(ElmBlock.zero.id, 0L, Array(), emptyWallet.generator, Seq(genesisTx)).updateHeights(1)
       val signature = PrivateKey25519Companion.sign(emptyWallet.secret, unsignedBlock.bytes)
       val genesisBlock: ElmBlock = unsignedBlock.copy(generationSignature = signature.signature)
 
-      val blocktree = ElmBlocktree.zero.append(genesisBlock, emptyMinState).toOption.get
+      val blocktree = zeroBlocktree.append(genesisBlock, emptyMinState).toOption.get
 
       log.info(s"Genesis state with block ${genesisBlock.jsonNoTxs.noSpaces} created")
 
-      val updatedMinState = emptyMinState.applyModifier(genesisBlock).get
+      val updatedMinState = emptyMinState.applyBlock(genesisBlock)
       val updatedWallet = emptyWallet.scanPersistent(genesisBlock)
 
       state += genesisBlock.id.key -> FullState(updatedMinState, updatedWallet, emptyMemPool)
 
       (blocktree, updatedMinState, updatedWallet, emptyMemPool)
     } else {
-      (ElmBlocktree.zero, emptyMinState, emptyWallet, emptyMemPool)
+      (zeroBlocktree, emptyMinState, emptyWallet, emptyMemPool)
     }
   }
 
@@ -120,6 +132,21 @@ class ElmNodeViewHolder(appConfig: AppConfig) extends NodeViewHolder[PublicKey25
     }
   }
 
+  override protected def compareSyncInfo: Receive = {
+    case OtherNodeSyncingInfo(remote, syncInfo: ElmSyncInfo @unchecked) =>
+
+      val extension = history().continuationIds(syncInfo).take(networkChunkSize)
+      log.debug("sending extension: " + extension.map(_.base58).mkString(", "))
+
+      sender() ! OtherNodeSyncingStatus(
+        remote,
+        history().compare(syncInfo),
+        syncInfo,
+        history().syncInfo(true),
+        Some(extension.map(ElmBlock.ModifierTypeId -> _.array)).filterNot(_.isEmpty)
+      )
+  }
+
   private def updateState(newBlocktree: ElmBlocktree, newBlock: ElmBlock): Unit = {
     val blockId = newBlock.id.key
     val parentState = state(newBlock.parentId.key)
@@ -134,5 +161,10 @@ class ElmNodeViewHolder(appConfig: AppConfig) extends NodeViewHolder[PublicKey25
     } else {
       nodeView = nodeView.copy(_1 = newBlocktree)
     }
+  }
+
+  private def getFullView: Receive = {
+    case GetFullView =>
+      sender ! FullView(history(), minimalState(), vault(), memoryPool(), state.toMap)
   }
 }

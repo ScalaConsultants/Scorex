@@ -1,7 +1,7 @@
 package io.scalac.elm
 
 import akka.actor.Props
-import io.scalac.elm.api.{BlockchainApiRoute, WalletApiRoute}
+import io.scalac.elm.api.{BlocktreeApiRoute, WalletApiRoute}
 import io.scalac.elm.config.{AppConfig, AppInfo}
 import io.scalac.elm.history.{ElmSyncInfo, ElmSyncInfoSpec}
 import io.scalac.elm.core.{ElmLocalInterface, ElmNodeViewHolder}
@@ -39,14 +39,14 @@ class ElmApp(appInfo: AppInfo, appConfig: AppConfig) extends {
     UtilsApiRoute(settings),
     PeersApiRoute(peerManager, networkController, settings),
     new WalletApiRoute(settings, nodeViewHolderRef),
-    new BlockchainApiRoute(settings, nodeViewHolderRef)
+    new BlocktreeApiRoute(settings, nodeViewHolderRef)
   )
 
   override val apiTypes = Seq(
     typeOf[UtilsApiRoute],
     typeOf[PeersApiRoute],
     typeOf[WalletApiRoute],
-    typeOf[BlockchainApiRoute]
+    typeOf[BlocktreeApiRoute]
   )
 
   val forger = actorSystem.actorOf(Props(classOf[Forger], nodeViewHolderRef, appConfig))
