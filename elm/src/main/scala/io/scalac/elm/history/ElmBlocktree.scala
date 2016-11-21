@@ -48,7 +48,7 @@ case class ElmBlocktree private(
   override type NVCT = ElmBlocktree
 
   def append(block: ElmBlock, minState: ElmMinState): Error Xor ElmBlocktree = {
-    if (isValid(block)) {
+    if (isValid(block, minState)) {
       val blockId = block.id.key
       val parentId = block.parentId.key
       val parent = blocks(parentId)
@@ -188,64 +188,40 @@ case class ElmBlocktree private(
     }
   }
 
-  private def isValid(block: ElmBlock): Boolean =
-    if (block.parentId == ElmBlock.zero.id) {
-      block.transactions.exists(_.forall(t => t.inputs.isEmpty &&
-        t.outputs.forall(txo =>
-          Curve25519.verify(block.generationSignature, block.copy(generationSignature = Array()).bytes, txo.proposition.pubKeyBytes)
-        )))
-    } else {
-      val generatorPubKey = block.generator.pubKeyBytes
-      val sygnature = block.generationSignature
-      val message = block.copy(generationSignature = Array()).bytes
-      lazy val isSigned = Curve25519.verify(sygnature, message, generatorPubKey)
+  private def isValid(block: ElmBlock, minState: ElmMinState): Boolean =
+    applicable(block) && {
+      val parent = blocks(block.parentId)
 
-      //coinstake and one additional transacton
-      lazy val correctTransactionCount = block.transactions.exists(_.size >= 2)
+      val genesis = parent.height == 0
 
-      val txi = block.transactions.map(_.flatMap(_.inputs)).getOrElse(Seq.empty)
-      val txiIds = txi.map(_.closedBoxId)
-
-      lazy val noDoubleSpend =
-        chainOf(block.id).flatMap(_.block.transactions).flatten.flatMap(_.inputs).map(_.closedBoxId).forall(t => !txiIds.contains(t)) &&
-          txiIds.distinct.size == txiIds.size
-
-      val txoForBlock: Map[Array[Byte], TxOutput] = chainOf(block.parentId)
-        .flatMap(_.block.transactions).flatten
-        .flatMap(_.outputs)
-        .filter(txo => txiIds.contains(txo.id))
-        .map(t => (t.id, t))
-        .toMap
-
-      lazy val transactionValid: Boolean = block.transactions.exists {
-        case coinstake :: regularTxs =>
-          isCoinstakeValid(coinstake, txoForBlock, generatorPubKey, regularTxs.map(_.fee).sum) && regularTxs.forall(isTransactionValid)
+      val signed = {
+        val generatorPubKey = block.generator.pubKeyBytes
+        val signature = block.generationSignature
+        val message = block.copy(generationSignature = Array()).bytes
+        Curve25519.verify(signature, message, generatorPubKey)
       }
 
-      applicable(block) && isSigned && correctTransactionCount && noDoubleSpend && transactionValid
+      val coinstakeValid = {
+        val totalFees = block.txs.map(_.fee).sum
+        block.txs.headOption.map(minState.isCoinstakeValid(_, totalFees)).exists(identity)
+      }
+
+      val transactionsValid = {
+        val txs = block.txs.drop(1)
+        txs.nonEmpty && txs.forall(minState.isValid)
+      }
+
+      val correctHeights = block.txs.flatMap(_.outputs).flatMap(_.height).forall(_ == parent.height + 1)
+
+      val uniqueInputs = {
+        val outIds = block.txs.flatMap(_.inputs).map(_.closedBoxId.key)
+        outIds.toSet.size == outIds.size
+      }
+
+      genesis || (
+        signed && coinstakeValid && transactionsValid && correctHeights && uniqueInputs
+      )
     }
-
-  private def isCoinstakeValid(coinstake: ElmTransaction, chainTxos: Map[Array[Byte], TxOutput], generatorPubKey: PublicKey, totalTxsFee: Long): Boolean = {
-    val validCoinstakeFee = coinstake.fee == 0
-
-    val coinstakeInputs = coinstake.inputs.flatMap(i => chainTxos.get(i.closedBoxId))
-
-    //lazy
-    val validBalance = (totalTxsFee + coinstakeInputs.map(_.value).sum) == coinstake.outputs.map(_.value).sum
-
-    //lazy
-    val validInputs = coinstake.inputs.map(i => (chainTxos.get(i.closedBoxId), i)).forall {
-      case (Some(chainTxo: TxOutput), txi: TxInput) =>
-        chainTxo.proposition.pubKeyBytes == generatorPubKey && txi.boxKey.isValid(chainTxo.proposition, chainTxo.bytes)
-      case _=> false
-    }
-
-    validCoinstakeFee && validBalance && validInputs
-  }
-
-  private def isTransactionValid(regularTx: ElmTransaction): Boolean = {
-    true
-  }
 
   private def findStartingPoints(theseBlocks: Set[ByteKey], otherBlocks: Set[ByteKey]): List[ByteKey] =
     if (theseBlocks.isEmpty) Nil else {

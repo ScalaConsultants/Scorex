@@ -10,7 +10,7 @@ import scorex.core.transaction.state.MinimalState.VersionTag
 import scorex.core.utils.ScorexLogging
 import scorex.crypto.signatures.Curve25519
 
-import scala.util.{Failure, Try}
+import scala.util.Try
 
 object ElmMinState {
 
@@ -23,7 +23,6 @@ case class ElmMinState(storage: Map[ByteKey, TxOutput] = Map.empty)
   override type NVCT = ElmMinState
 
   def applyBlock(block: ElmBlock): ElmMinState = {
-    //TODO: should make sure TxOutput heights are defined
     val (toRemove, toAdd): (List[ByteKey], List[(ByteKey, TxOutput)]) =
       block.txs.foldLeft(List.empty[ByteKey] -> List.empty[(ByteKey, TxOutput)]) {
         case ((rem, add), tx) =>
@@ -34,19 +33,47 @@ case class ElmMinState(storage: Map[ByteKey, TxOutput] = Map.empty)
   }
 
   override def isValid(tx: ElmTransaction): Boolean = {
-    val inputSum = tx.inputs.flatMap(in => storage.get(in.closedBoxId)).map(_.value).sum
-    val outputSum = tx.outputs.map(_.value).sum + tx.fee
+    val addsUp = {
+      val inputSum = tx.inputs.flatMap(in => get(in.closedBoxId)).map(_.value).sum
+      val outputSum = tx.outputs.map(_.value).sum + tx.fee
+      inputSum == outputSum
+    }
 
-    val addsUp = inputSum == outputSum
+    val positiveOuts = tx.outputs.forall(_.value > 0)
 
-    lazy val positiveOuts = tx.outputs.forall(_.value > 0)
+    val positiveFee = tx.fee > 0
 
-    lazy val signed = tx.inputs.forall { in =>
-      val out = storage.get(in.closedBoxId)
+    val signed = tx.inputs.forall { in =>
+      val out = get(in.closedBoxId)
       out.map(o => Curve25519.verify(in.boxKey.signature, o.bytes, o.proposition.pubKeyBytes)).exists(identity)
     }
 
-    addsUp && positiveOuts && signed
+    if (addsUp && positiveOuts && positiveFee && signed) true else {
+//      println("VALIDAITON FAILURE")
+//      println(s"$addsUp $positiveOuts $positiveFee $signed")
+//      println(tx.json.spaces4)
+      false
+    }
+  }
+
+  def isCoinstakeValid(tx: ElmTransaction, totalFees: Long): Boolean = {
+    val addsUp = {
+      val inputSum = tx.inputs.flatMap(in => get(in.closedBoxId)).map(_.value).sum
+      val outputSum = tx.outputs.map(_.value).sum
+
+      inputSum + totalFees == outputSum
+    }
+
+    val positiveOuts = tx.outputs.forall(_.value > 0)
+
+    val zeroFee = tx.fee == 0
+
+    val signed = tx.inputs.forall { in =>
+      val out = get(in.closedBoxId)
+      out.map(o => Curve25519.verify(in.boxKey.signature, o.bytes, o.proposition.pubKeyBytes)).exists(identity)
+    }
+
+    addsUp && positiveOuts && zeroFee && signed
   }
 
   def get(outId: ByteKey): Option[TxOutput] =

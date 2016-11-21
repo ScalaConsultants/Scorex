@@ -10,7 +10,7 @@ import scala.concurrent.duration.{Duration, FiniteDuration}
 object SimConfig {
   case class HttpConf(timeout: FiniteDuration)
 
-  case class TxConf(count: Int, interval: FiniteDuration, minAmount: Double, maxAmount: Double, minFee: Long, maxFee: Long)
+  case class TxConf(count: Int, interval: FiniteDuration, minFunds: Long, minAmount: Double, maxAmount: Double, minFee: Long, maxFee: Long)
 
   case class SyncConf(interval: FiniteDuration, attempts: Int)
 
@@ -35,6 +35,7 @@ object SimConfig {
   private def transactions(config: Config) = TxConf(
     count = config.getInt("count"),
     interval = getDuration(config, "interval"),
+    minFunds = config.getLong("min-funds"),
     minAmount = config.getDouble("min-amount"),
     maxAmount = config.getDouble("max-amount"),
     minFee = config.getLong("min-fee"),

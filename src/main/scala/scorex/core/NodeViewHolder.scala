@@ -1,6 +1,7 @@
 package scorex.core
 
 import akka.actor.{Actor, ActorRef}
+import org.slf4j.Logger
 import scorex.core.LocalInterface.{LocallyGeneratedModifier, LocallyGeneratedTransaction}
 import scorex.core.NodeViewModifier.{ModifierId, ModifierTypeId}
 import scorex.core.api.http.ApiRoute
@@ -32,7 +33,9 @@ import scala.util.{Failure, Success}
   * @tparam TX
   */
 trait NodeViewHolder[P <: Proposition, TX <: Transaction[P], PMOD <: PersistentNodeViewModifier[P, TX]]
-  extends Actor with ScorexLogging {
+  extends Actor {
+
+  def log: Logger
 
   import NodeViewHolder._
 
@@ -53,7 +56,7 @@ trait NodeViewHolder[P <: Proposition, TX <: Transaction[P], PMOD <: PersistentN
   private val modifiersCache = mutable.Map[mutable.WrappedArray[Byte], (ConnectedPeer, PMOD)]()
 
   //mutable private node view instance
-  protected var nodeView: NodeView = restoreState().getOrElse(genesisState)
+  protected var nodeView: NodeView = _
 
   /**
     * Hard-coded initial view all the honest nodes in a network are making progress from.
@@ -89,6 +92,7 @@ trait NodeViewHolder[P <: Proposition, TX <: Transaction[P], PMOD <: PersistentN
         notifySubscribers(EventType.SuccessfulTransaction, SuccessfulTransaction[P, TX](tx, source))
 
       case Failure(e) =>
+
         notifySubscribers(EventType.FailedTransaction, FailedTransaction[P, TX](tx, e, source))
     }
   }

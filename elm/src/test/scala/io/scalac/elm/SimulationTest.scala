@@ -12,10 +12,7 @@ class SimulationTest extends FlatSpec with Matchers {
   import io.circe.syntax._
   import io.circe.generic.auto._
 
-  println(simulationResults.payments.map {
-    case Payment(id, sender, recipient, amount, fee) =>
-      Map[String, String]("id" -> id, "sender" -> sender.publicKey, "recipient" -> recipient.publicKey, "amount" -> amount.toString, "fee" -> fee.toString)
-  }.asJson.spaces4)
+  println(simulationResults.payments.map(_.asJson.spaces4))
 
   println(simulationResults.nodeResults.asJson.spaces4)
 

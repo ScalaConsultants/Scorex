@@ -37,7 +37,7 @@ class Forger(viewHolderRef: ActorRef, elmConfig: ElmConfig) extends Actor with S
 
         parent = history.blocks(leafId)
         fullState = fullStates(leafId)
-        memPool = fullState.memPool.merge(currentMemPool)
+        memPool = fullState.memPool.merge(currentMemPool).filterValid(minState)
         wallet = currentWallet.scanOffchain(memPool.getAll)
         availableCoinage = wallet.accumulatedCoinAge(parent.height)
         target = history.targetScore(leafId)

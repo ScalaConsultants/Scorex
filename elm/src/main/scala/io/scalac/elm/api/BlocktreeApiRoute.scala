@@ -7,6 +7,7 @@ import akka.http.scaladsl.marshalling.{Marshaller, ToEntityMarshaller}
 import akka.http.scaladsl.model.MediaTypes
 import akka.http.scaladsl.server._
 import akka.pattern.ask
+import akka.util.Timeout
 import io.circe._
 import io.circe.syntax._
 import io.scalac.elm.history.ElmBlocktree
@@ -16,12 +17,15 @@ import scorex.core.NodeViewHolder
 import scorex.core.NodeViewHolder.CurrentView
 import scorex.core.api.http.ApiRoute
 import scorex.core.settings.Settings
+import scala.concurrent.duration._
 
 @Path("/blocktree")
 @Api(value = "/blocktree")
 class BlocktreeApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(implicit val context: ActorRefFactory) extends ApiRoute {
 
   import context.dispatcher
+
+  implicit val askTimeout = Timeout(15.seconds)
 
   implicit val jsonMarshaller: ToEntityMarshaller[Json] =
     Marshaller.StringMarshaller.wrap(MediaTypes.`application/json`)(_.spaces4)
