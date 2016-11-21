@@ -2,11 +2,11 @@
 
 # 2. Implementation details
 
-  - Peercoin
-    TODO
+    - Peercoin
+      TODO
     
-  - Multi-chain
-     TODO
+    - Multi-chain
+      TODO
 # 3. Modifications in Scorex
 
     TODO - only listed files that have changes 
