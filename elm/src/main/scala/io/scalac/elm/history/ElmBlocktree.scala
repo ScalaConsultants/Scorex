@@ -1,7 +1,7 @@
 package io.scalac.elm.history
 
 import cats.data.Xor
-import io.scalac.elm.config.AppConfig.ConsensusConf
+import io.scalac.elm.config.ElmConfig.ConsensusConf
 import io.scalac.elm.history.ElmBlocktree._
 import io.scalac.elm.state.ElmMinState
 import io.scalac.elm.transaction.{ElmBlock, ElmTransaction}
@@ -96,10 +96,10 @@ case class ElmBlocktree private(
     * @param n chain order: 1 - main chain, 2 - next best chain, and so on...
     */
   def chainOf(n: Int): Option[Stream[Node]] =
-    leaves.map(blocks).toList
-      .sorted.reverse
-      .map(_.id).zipWithIndex.map(_.swap).toMap
-      .get(n - 1).map(chainOf)
+    sortedLeaves.lift(n - 1).map(chainOf)
+
+  def sortedLeaves: List[ByteKey] =
+    leaves.map(blocks).toList.sorted.reverse.map(_.id)
 
   override def blockById(blockId: BlockId): Option[ElmBlock] =
     blocks.get(blockId).map(_.block)

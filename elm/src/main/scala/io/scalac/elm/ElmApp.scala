@@ -1,35 +1,37 @@
 package io.scalac.elm
 
-import akka.actor.Props
+import akka.actor.{ActorSystem, Props}
+import akka.http.scaladsl.Http
 import io.scalac.elm.api.{BlocktreeApiRoute, WalletApiRoute}
-import io.scalac.elm.config.{AppConfig, AppInfo}
+import io.scalac.elm.config.ElmConfig
 import io.scalac.elm.history.{ElmSyncInfo, ElmSyncInfoSpec}
 import io.scalac.elm.core.{ElmLocalInterface, ElmNodeViewHolder}
 import io.scalac.elm.forging.Forger
 import io.scalac.elm.transaction.{ElmBlock, ElmTransaction}
 import scorex.core.api.http._
 import scorex.core.app.Application
-import scorex.core.network.NodeViewSynchronizer
+import scorex.core.network.{NetworkController, NodeViewSynchronizer}
 import scorex.core.transaction.box.proposition.PublicKey25519Proposition
-import scorex.core.utils.ScorexLogging
 
 import scala.reflect.runtime.universe.typeOf
 
-class ElmApp(appInfo: AppInfo, appConfig: AppConfig) extends {
-
-  override val applicationName = appInfo.name
-  override val appVersion = appInfo.appVersion
-  override val settings = appConfig.settings
+case class ElmApp(elmConfig: ElmConfig) extends {
+  override val applicationName = elmConfig.node.appName
+  override val appVersion = elmConfig.node.appVersion
+  override val settings = elmConfig.scorexSettings
   override protected val additionalMessageSpecs = Seq(ElmSyncInfoSpec)
 
 } with Application {
+
+  override implicit lazy val actorSystem = ActorSystem(s"${elmConfig.node.appName}-${elmConfig.node.name}")
+  val nodeName: String = elmConfig.node.name
 
   override type P = PublicKey25519Proposition
   override type TX = ElmTransaction
   override type PMOD = ElmBlock
   override type NVHT = ElmNodeViewHolder
 
-  override val nodeViewHolderRef = actorSystem.actorOf(Props(classOf[ElmNodeViewHolder], appConfig))
+  override val nodeViewHolderRef = actorSystem.actorOf(Props(classOf[ElmNodeViewHolder], elmConfig))
   override val localInterface = actorSystem.actorOf(Props(classOf[ElmLocalInterface], nodeViewHolderRef))
   override val nodeViewSynchronizer = actorSystem.actorOf(
     Props(classOf[NodeViewSynchronizer[P, TX, ElmSyncInfo, ElmSyncInfoSpec.type]],
@@ -49,10 +51,36 @@ class ElmApp(appInfo: AppInfo, appConfig: AppConfig) extends {
     typeOf[BlocktreeApiRoute]
   )
 
-  val forger = actorSystem.actorOf(Props(classOf[Forger], nodeViewHolderRef, appConfig))
+  val forger = actorSystem.actorOf(Props(classOf[Forger], nodeViewHolderRef, elmConfig))
+
+  override def run(): Unit = {
+    log.debug(s"Available processors: ${Runtime.getRuntime.availableProcessors}")
+    log.debug(s"Max memory available: ${Runtime.getRuntime.maxMemory}")
+    log.debug(s"RPC is allowed at 0.0.0.0:${settings.rpcPort}")
+
+    Http().bindAndHandle(combinedRoute, "0.0.0.0", settings.rpcPort)
+
+    if (elmConfig.node.shutdownHook) {
+      Runtime.getRuntime.addShutdownHook(new Thread() {
+        override def run() {
+          log.error("Unexpected shutdown")
+          stopAll()
+        }
+      })
+    }
+  }
+
+  override def stopAll(): Unit = synchronized {
+    log.info("Stopping network services")
+    if (settings.upnpEnabled) upnp.deletePort(settings.port)
+    networkController ! NetworkController.ShutdownNetwork
+
+    log.info("Stopping actors (incl. block generator)")
+    actorSystem.terminate()
+  }
 }
 
-object ElmApp extends App with ScorexLogging {
-  val elmApp = new ElmApp(AppInfo(), AppConfig.load())
+object ElmApp extends App {
+  val elmApp = ElmApp(ElmConfig.load())
   elmApp.run()
 }

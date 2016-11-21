@@ -1,7 +1,7 @@
 package io.scalac.elm.forging
 
 import akka.actor.{Actor, ActorRef}
-import io.scalac.elm.config.AppConfig
+import io.scalac.elm.config.ElmConfig
 import io.scalac.elm.core.ElmNodeViewHolder.{FullView, GetFullView}
 import io.scalac.elm.transaction._
 import scorex.core.LocalInterface.LocallyGeneratedModifier
@@ -16,13 +16,13 @@ object Forger {
   case object Forge
 }
 
-class Forger(viewHolderRef: ActorRef, appConfig: AppConfig) extends Actor with ScorexLogging {
+class Forger(viewHolderRef: ActorRef, elmConfig: ElmConfig) extends Actor with ScorexLogging {
 
   import Forger._
   import context.dispatcher
 
-  val strategy = ForgingStrategy(appConfig.forging.strategy)
-  val blockGenerationDelay = appConfig.forging.delay
+  val strategy = ForgingStrategy(elmConfig.forging.strategy)
+  val blockGenerationDelay = elmConfig.forging.delay
 
   override def preStart(): Unit = {
     context.system.scheduler.scheduleOnce(1.second)(self ! Forge)(context.dispatcher)

@@ -1,7 +1,7 @@
 package io.scalac.elm.core
 
 import cats.data.Xor
-import io.scalac.elm.config.AppConfig
+import io.scalac.elm.config.ElmConfig
 import io.scalac.elm.core.ElmNodeViewHolder.{FullState, _}
 import io.scalac.elm.history.{ElmBlocktree, ElmSyncInfo}
 import io.scalac.elm.state.{ElmMemPool, ElmMinState, ElmWallet}
@@ -29,11 +29,17 @@ object ElmNodeViewHolder {
     memPool: ElmMemPool, fullStates: Map[ByteKey, FullState])
   case object GetFullView
 
+  case object GetWalletForTransaction
+  case class WalletForTransaction(wallet: Option[ElmWallet], currentHeight: Int)
+  case class ReturnWallet(tx: Option[ElmTransaction])
+
   case class FullState(minState: ElmMinState, wallet: ElmWallet, memPool: ElmMemPool)
-  val zeroFullState = FullState(ElmMinState(), ElmWallet(), ElmMemPool())
+
+  def zeroFullState(elmConfig: ElmConfig): FullState =
+    FullState(ElmMinState(), ElmWallet.empty(elmConfig.node.keyPairSeed), ElmMemPool())
 }
 
-class ElmNodeViewHolder(appConfig: AppConfig) extends {
+class ElmNodeViewHolder(elmConfig: ElmConfig) extends {
   private val state: mutable.Map[ByteKey, FullState] = mutable.Map.empty
 } with NodeViewHolder[PublicKey25519Proposition, ElmTransaction, ElmBlock] {
 
@@ -48,6 +54,9 @@ class ElmNodeViewHolder(appConfig: AppConfig) extends {
   type TX = ElmTransaction
   type PMOD = ElmBlock
 
+
+  private var walletLocked = false
+
   override lazy val modifierCompanions: Map[ModifierTypeId, NodeViewModifierCompanion[_ <: NodeViewModifier]] =
     Map(
       ElmBlock.ModifierTypeId -> ElmBlock,
@@ -55,26 +64,27 @@ class ElmNodeViewHolder(appConfig: AppConfig) extends {
     )
 
   override def receive: Receive =
-    getFullView orElse super.receive
+    getFullView orElse getWalletForTx orElse walletReturned orElse super.receive
 
   override def restoreState(): Option[(HIS, MS, VL, MP)] = None
 
   override protected def genesisState: (HIS, MS, VL, MP) = {
 
-    val zeroBlocktree = ElmBlocktree.zero(appConfig.consensus)
-    val emptyMinState = zeroFullState.minState
-    val emptyWallet = zeroFullState.wallet
-    val emptyMemPool = zeroFullState.memPool
+    val zeroBlocktree = ElmBlocktree.zero(elmConfig.consensus)
+    val zeroFState = zeroFullState(elmConfig)
+    val emptyMinState = zeroFState.minState
+    val emptyWallet = zeroFState.wallet
+    val emptyMemPool = zeroFState.memPool
 
-    state += (ElmBlock.zero.id.key -> zeroFullState)
+    state += (ElmBlock.zero.id.key -> zeroFState)
 
-    if (appConfig.genesis.generate) {
-      val initialAmount = appConfig.genesis.initialFunds
+    if (elmConfig.genesis.generate) {
+      val initialAmount = elmConfig.genesis.initialFunds
 
       // we generate a bunch of outputs because of coinage destruction problem
       // another way to approach this would be to retain age of coinstake change, but that would require outputs to be explicitly timestamped
-      val grains = appConfig.genesis.grains
-      val genesisTx = ElmTransaction(Nil, List.fill(grains)(TxOutput(initialAmount / grains, emptyWallet.secret.publicImage)), 0, System.currentTimeMillis)
+      val grains = elmConfig.genesis.grains
+      val genesisTx = ElmTransaction(Nil, List.fill(grains)(TxOutput(initialAmount / grains, emptyWallet.secret.publicImage)), 0)
 
       val unsignedBlock: ElmBlock = ElmBlock(ElmBlock.zero.id, 0L, Array(), emptyWallet.generator, Seq(genesisTx)).updateHeights(1)
       val signature = PrivateKey25519Companion.sign(emptyWallet.secret, unsignedBlock.bytes)
@@ -104,7 +114,7 @@ class ElmNodeViewHolder(appConfig: AppConfig) extends {
     log.info(s"Applying modifier to nodeViewHolder: ${block.id.base58}")
 
     val parentId = block.parentId.key
-    val parentState = state.getOrElse(parentId, zeroFullState)
+    val parentState = state.getOrElse(parentId, zeroFullState(elmConfig))
 
     history().append(block, parentState.minState) match {
       case Xor.Right(newBlocktree) =>
@@ -150,9 +160,33 @@ class ElmNodeViewHolder(appConfig: AppConfig) extends {
   private def updateState(newBlocktree: ElmBlocktree, newBlock: ElmBlock): Unit = {
     val blockId = newBlock.id.key
     val parentState = state(newBlock.parentId.key)
+    val newMemPool = memoryPool().merge(parentState.memPool).applyBlock(newBlock)
     val newMinState = parentState.minState.applyBlock(newBlock) //TODO: confirmation depth
-    val newWallet = parentState.wallet.scanPersistent(newBlock) //TODO: confirmation depth
-    val newMemPool = parentState.memPool.applyBlock(newBlock)
+    val newWallet = parentState.wallet.scanPersistent(newBlock).scanOffchain(newMemPool.getAll) //TODO: confirmation depth
+
+    if (elmConfig.node.name == "alice") {
+      val outSum = newWallet.chainTxOutputs.values.map(_.value).sum
+      println(s"WALLET BALANCE ALICE: ${newWallet.currentBalance} vs $outSum")
+
+      val aliceOuts = newBlocktree.chainOf(newBlock.id.key).toList.flatMap(_.block.txs).flatMap(_.outputs).filter(_.proposition.pubKeyBytes.base58 == newWallet.generator.pubKeyBytes.base58)
+      val aliceIns = newBlocktree.chainOf(newBlock.id.key).toList.flatMap(_.block.txs).flatMap(_.inputs).map(_.closedBoxId.key).toSet
+
+      val treeOuts = aliceOuts.filterNot(out => aliceIns(out.id.key))
+      val waltOuts = newWallet.chainTxOutputs.values.toSeq
+
+      println(s"TREE OUTS: ${treeOuts.size}, sum: ${treeOuts.map(_.value).sum}")
+      println(s"WALT OUTS: ${waltOuts.size}, sum: ${waltOuts.map(_.value).sum}")
+
+      val outs = newBlocktree.chainOf(newBlock.id.key).toList.flatMap(_.block.txs).flatMap(_.outputs).map(_.id.key)
+      val ins = newBlocktree.chainOf(newBlock.id.key).toList.flatMap(_.block.txs).flatMap(_.inputs).map(_.closedBoxId.key)
+      println(s"chain has duplicate outs: " + (outs.size != outs.toSet.size))
+      println(s"chain has duplicate ins: " + (ins.size != ins.toSet.size))
+
+      val allOuts = newBlocktree.chainOf(newBlock.id.key).toList.flatMap(_.block.txs).flatMap(_.outputs)
+      val allIns = newBlocktree.chainOf(newBlock.id.key).toList.flatMap(_.block.txs).flatMap(_.inputs).map(_.closedBoxId.key).toSet
+      val unspentOuts = allOuts.filterNot(o => allIns(o.id.key))
+      println(s"All unspent outs sum up to: ${unspentOuts.map(_.value).sum}")
+    }
 
     state += blockId -> FullState(newMinState, newWallet, newMemPool)
 
@@ -166,5 +200,20 @@ class ElmNodeViewHolder(appConfig: AppConfig) extends {
   private def getFullView: Receive = {
     case GetFullView =>
       sender ! FullView(history(), minimalState(), vault(), memoryPool(), state.toMap)
+  }
+
+  private def getWalletForTx: Receive = {
+    case GetWalletForTransaction =>
+      if (walletLocked)
+        sender ! WalletForTransaction(None, 0)
+      else
+        walletLocked = true
+        sender ! WalletForTransaction(Some(vault()), history().height)
+  }
+
+  private def walletReturned: Receive = {
+    case ReturnWallet(tx) =>
+      tx.foreach(txModify(_, None))
+      walletLocked = false
   }
 }

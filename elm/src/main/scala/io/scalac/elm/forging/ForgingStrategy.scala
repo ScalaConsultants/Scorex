@@ -1,6 +1,6 @@
 package io.scalac.elm.forging
 
-import io.scalac.elm.config.AppConfig.{DumbForgingStrategyConf, ForgingStrategyConf, SimpleForgingStrategyConf}
+import io.scalac.elm.config.ElmConfig.{DumbForgingStrategyConf, ForgingStrategyConf, SimpleForgingStrategyConf}
 import io.scalac.elm.state.ElmMemPool
 
 object ForgingStrategy {
