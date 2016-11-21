@@ -1,13 +1,13 @@
-1. Overview
+# 1. Overview
 
-2. Implementation details
+# 2. Implementation details
 
   - Peercoin
     TODO
     
   - Multi-chain
      TODO
-3. Modifications in Scorex
+# 3. Modifications in Scorex
 
     TODO - only listed files that have changes 
     
@@ -21,7 +21,7 @@
     - in `src/main/scala/scorex/core/network/peer/PeerManager.scala`
     - in `src/main/scala/scorex/core/transaction/Transaction.scala`
   
-4. Running
+# 4. Running
 
    Application node can be run with `java -jar` command but you have to pass `-Dconfig.file=conf_file` that points to configuration file, for example `java -Dconfig.file=conf_file -jar `.
    To create executable jar with all dependencies you have to execute sbt command `sbt "project elm" assembly`, jar will be created in `elm/target` directory.
@@ -73,8 +73,8 @@
         }
         ```
     
-5. Testing
+# 5. Testing
     TODO
     
-6. Conclusions
+# 6. Conclusions
     TODO
