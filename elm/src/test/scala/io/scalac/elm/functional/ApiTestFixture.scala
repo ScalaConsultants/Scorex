@@ -48,11 +48,11 @@ trait ApiTestFixture extends FlatSpec with BeforeAndAfterAll {
       val uri = s"http://localhost:${node2port(node)}/$relUri"
       node.log.debug(s"Trying to $desc: $uri")
       val result = Http(uri)
-        .header("Accept", "text/plain")
+        .header("Accept", "text/plain, application/json")
         .option(HttpOptions.readTimeout(queryTimeout))
         .params(params)
         .asString.body
-      node.log.debug(s"Received $result from $uri")
+      node.log.trace(s"Received $result from $uri")
       parseResult(result)
     } match {
       case Success(value) => value
@@ -61,17 +61,17 @@ trait ApiTestFixture extends FlatSpec with BeforeAndAfterAll {
   }
 
   protected def getWalletAddress(node: TestElmApp) = node
-    .queryApi("wallet/address", desc = "query wallet address", errMsg = "All addresses should be known") {
+    .queryApi("wallet/address", desc = "query wallet address", errMsg = "Couldn't get address") {
       ApiResponseDeserialization.toAddress
     }
 
   protected def getWalletFunds(node: TestElmApp) = node
-    .queryApi("wallet/funds", desc = "query wallet funds", errMsg = "Funds should be always accessible") {
+    .queryApi("wallet/funds", desc = "query wallet funds", errMsg = "Couldn't get funds") {
       ApiResponseDeserialization.toFunds
     }
 
   protected def makePayment(sender: TestElmApp, receiver: TestElmApp, amount: Int, fee: Int) = sender
-    .queryApi("wallet/payment", desc = "make a payment", errMsg = "Payment should always be possible", params = Map(
+    .queryApi("wallet/payment", desc = "make a payment", errMsg = "Couldn't make payment", params = Map(
       "address" -> node2Address(receiver),
       "amount"-> amount.toString,
       "fee" -> fee.toString
@@ -80,12 +80,12 @@ trait ApiTestFixture extends FlatSpec with BeforeAndAfterAll {
     }
 
   protected def getBlocks(node: TestElmApp) = node
-    .queryApi("blockchain/block", desc = "query blockchain", errMsg = "Blockchain should always be accessible") {
+    .queryApi("blocktree/mainchain", desc = "query blockchain", errMsg = "Couldn't get block chain") {
       ApiResponseDeserialization.toBlockAddresses
     }
 
   protected def getTransaction(node: TestElmApp, blockId: String) = node
-    .queryApi(s"blockchain/block/$blockId", desc = s"query block", errMsg = "Block info should always be accessible") {
+    .queryApi(s"blocktree/block/$blockId", desc = s"query block", errMsg = "Couldn't get block") {
       ApiResponseDeserialization.toBlock
     }
 

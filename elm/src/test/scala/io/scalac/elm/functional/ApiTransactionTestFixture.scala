@@ -48,6 +48,7 @@ trait ApiTransactionTestFixture { self: ApiTestFixture =>
     processed.filterKeys(leafIds.contains)
   }
 
+  @tailrec
   private def findBlocksDepth(
     currentBlocks: Set[ProcessedBlock],
     currentDepth: Int = 0,

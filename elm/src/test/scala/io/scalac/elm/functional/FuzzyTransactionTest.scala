@@ -15,7 +15,7 @@ class FuzzyTransactionTest
 
   val maxFeePercentage = 0.1
   val maxAmountPercentage = 0.3
-  val numberOfTransactions = 30
+  val numberOfTransactions = 5
   val delayBetweenTransactions = 100
   val confirmationDepth = 3
 
@@ -46,9 +46,9 @@ class FuzzyTransactionTest
     if (transactionsLeft <= 0) node2State
     else {
       val maxFunds = node2State.values.map(_.estimatedFunds).max
-      val fee = Random.nextInt((maxFunds / maxFeePercentage).toInt)
+      val fee = Random.nextInt((maxFunds / maxFeePercentage).toInt + 1)
       val maxAmount = ((maxFunds - fee) * maxAmountPercentage).toInt
-      val amount = Random.nextInt(maxAmount)
+      val amount = Random.nextInt(maxAmount + 1)
 
       val sender = Random.shuffle(node2State collect { case (node, state) if state.estimatedFunds >= amount + fee => node }).head
       val receiver = Random.shuffle(nodes).head
@@ -82,9 +82,7 @@ class FuzzyTransactionTest
                              (node: TestElmApp, state: NodeExpectedState) = {
     val nodeAddress = node2Address(node)
     val transactionIds = transactions.map(t => Base58.encode(t.id))
-    val transactionSignedByNodeIds = blocks.filter { _.generator.address == nodeAddress }.flatMap {
-      _.transactions.toSeq.flatten.map(_.id)
-    }
+    val transactionSignedByNodeIds = blocks.filter { _.generator.address == nodeAddress }.flatMap { _.txs.map(_.id) }
     val confirmedSent = state.sent.filterKeys(transactionIds.contains)
     val confirmedReceived = state.received.filterKeys(transactionIds.contains)
     val feesFromSigning = transactions.filter { t => transactionSignedByNodeIds.contains(t.id) }.map { t =>
