@@ -26,15 +26,19 @@
    Application node can be run with `java -jar` command but you have to pass `-Dconfig.file=conf_file` that points to configuration file, for example `java -Dconfig.file=conf_file -jar `.
    To create executable jar with all dependencies you have to execute sbt command `sbt "project elm" assembly`, jar will be created in `elm/target` directory.
    There are 3 configuration files provided so nodes can be launched by executing following commands
-   `java -Dconfig.file=elm/application-1.conf -jar elm/target/elm.jar`
-   `java -Dconfig.file=elm/application-2.conf -jar elm/target/elm.jar`
-   `java -Dconfig.file=elm/application-3.conf -jar elm/target/elm.jar`
+   ```
+   java -Dconfig.file=elm/application-1.conf -jar elm/target/elm.jar
+   java -Dconfig.file=elm/application-2.conf -jar elm/target/elm.jar
+   java -Dconfig.file=elm/application-3.conf -jar elm/target/elm.jar
+   ```
    After that every node will start http server with swagger accessible at url as follows: 
 
+    ```
     node1 http://localhost:9085/swagger
     node2 http://localhost:9087/swagger
     node3 http://localhost:9089/swagger
-
+    ```
+    
     In configuration it is set that node1 generates genesis block and adds to its wallet 10000 coins
     
   - Configuration
