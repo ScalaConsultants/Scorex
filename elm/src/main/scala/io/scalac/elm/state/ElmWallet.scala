@@ -49,20 +49,7 @@ case class ElmWallet(secret: PrivateKey25519,
 
     val reducedChainTxOuts = chainTxOutputs -- outIds
 
-    //TODO how to restore balance when transactions are forgotten?
     copy(chainTxOutputs = reducedChainTxOuts, balance = balance - sum)
-  }
-
-  def unscanFailed(tx: ElmTransaction, minState: ElmMinState): ElmWallet = {
-    val rolledBack = for {
-      in <- tx.inputs
-      out <- minState.get(in.closedBoxId)
-      if out.proposition.pubKeyBytes.key == pubKeyBytes
-    } yield out
-
-    val updated = chainTxOutputs ++ rolledBack.map(o => o.id.key -> o)
-
-    copy(chainTxOutputs = updated, balance = updated.values.map(_.value).sum, failedTransactions = tx :: failedTransactions)
   }
 
   def scanOffchain(txs: Traversable[ElmTransaction]): ElmWallet =

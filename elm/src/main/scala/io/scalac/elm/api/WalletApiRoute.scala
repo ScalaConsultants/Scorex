@@ -25,7 +25,7 @@ class WalletApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(implicit 
 
   import context.dispatcher
 
-  implicit val askTimeout = Timeout(30.seconds)
+  implicit val askTimeout = Timeout(15.seconds)
 
   override lazy val route: Route = pathPrefix("wallet") {
     payment ~ address ~ funds ~ coinage

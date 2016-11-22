@@ -48,12 +48,7 @@ case class ElmMinState(storage: Map[ByteKey, TxOutput] = Map.empty)
       out.map(o => Curve25519.verify(in.boxKey.signature, o.bytes, o.proposition.pubKeyBytes)).exists(identity)
     }
 
-    if (addsUp && positiveOuts && positiveFee && signed) true else {
-//      println("VALIDAITON FAILURE")
-//      println(s"$addsUp $positiveOuts $positiveFee $signed")
-//      println(tx.json.spaces4)
-      false
-    }
+    addsUp && positiveOuts && positiveFee && signed
   }
 
   def isCoinstakeValid(tx: ElmTransaction, totalFees: Long): Boolean = {

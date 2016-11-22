@@ -124,10 +124,6 @@ class ElmNodeViewHolder(elmConfig: ElmConfig) extends {
     history().append(block, parentState.minState) match {
       case Xor.Right(newBlocktree) =>
         updateState(newBlocktree, block)
-        if (vault().balance <= 0 && elmConfig.node.name == "alice") {
-          log.warn(s"Wallet has ${vault().balance} after applying block: \n ${block.json.spaces4}")
-        }
-
         log.info(s"Persistent modifier ${Base58.encode(block.id)} applied successfully")
         notifySubscribers(EventType.SuccessfulPersistentModifier, SuccessfulModification[P, TX, PMOD](block, source))
 
@@ -143,16 +139,9 @@ class ElmNodeViewHolder(elmConfig: ElmConfig) extends {
         val updWallet = vault().scanOffchain(tx)
         nodeView = (history(), minimalState(), updWallet, updPool)
         log.debug(s"Unconfirmed transaction $tx added to the mempool")
-        if (updWallet.balance <= 0 && elmConfig.node.name == "alice") {
-          log.warn(s"Wallet has ${updWallet.balance} after applying offchain tx: \n ${tx.json.spaces4}")
-        }
         notifySubscribers(EventType.SuccessfulTransaction, SuccessfulTransaction[P, TX](tx, source))
 
       case Xor.Left(e) =>
-        if (true || source.isEmpty) {
-          log.info(s"Unapplying failed transaction: ${tx.id.base58}")
-          nodeView = nodeView.copy(_3 = vault().unscanFailed(tx, minimalState()))
-        }
         notifySubscribers(EventType.FailedTransaction, FailedTransaction[P, TX](tx, e, source))
     }
   }
@@ -178,41 +167,6 @@ class ElmNodeViewHolder(elmConfig: ElmConfig) extends {
     val newMinState = parentState.minState.applyBlock(newBlock) //TODO: confirmation depth
     val newMemPool = memoryPool().merge(parentState.memPool).applyBlock(newBlock).filterValid(newMinState)
     val newWallet = parentState.wallet.scanPersistent(newBlock).scanOffchain(newMemPool.getAll) //TODO: confirmation depth
-
-    if (elmConfig.node.name == "alice") {
-      import io.circe.syntax._
-      import io.circe.generic.auto._
-
-
-      val outSum = newWallet.chainTxOutputs.values.map(_.value).sum
-      println(s"WALLET BALANCE ALICE: ${newWallet.balance} vs $outSum")
-
-      val aliceOuts = newBlocktree.chainOf(newBlock.id.key).toList.flatMap(_.block.txs).flatMap(_.outputs).filter(_.proposition.pubKeyBytes.base58 == newWallet.generator.pubKeyBytes.base58)
-      val aliceIns = newBlocktree.chainOf(newBlock.id.key).toList.flatMap(_.block.txs).flatMap(_.inputs).map(_.closedBoxId.key).toSet
-
-      val treeOuts = aliceOuts.filterNot(out => aliceIns(out.id.key))
-      val waltOuts = newWallet.chainTxOutputs.values.toSeq
-
-      println(s"TREE OUTS: ${treeOuts.size}, sum: ${treeOuts.map(_.value).sum}")
-      println(s"WALT OUTS: ${waltOuts.size}, sum: ${waltOuts.map(_.value).sum}")
-
-      val outs = newBlocktree.chainOf(newBlock.id.key).toList.flatMap(_.block.txs).flatMap(_.outputs).map(_.id.key)
-      val ins = newBlocktree.chainOf(newBlock.id.key).toList.flatMap(_.block.txs).flatMap(_.inputs).map(_.closedBoxId.key)
-      println(s"chain has duplicate outs: " + (outs.size != outs.toSet.size))
-      println(s"chain has duplicate ins: " + (ins.size != ins.toSet.size))
-
-      val allOuts = newBlocktree.chainOf(newBlock.id.key).toList.flatMap(_.block.txs).flatMap(_.outputs)
-      val allIns = newBlocktree.chainOf(newBlock.id.key).toList.flatMap(_.block.txs).flatMap(_.inputs).map(_.closedBoxId.key).toSet
-      val unspentOuts = allOuts.filterNot(o => allIns(o.id.key))
-      println(s"All unspent outs sum up to: ${unspentOuts.map(_.value).sum}")
-
-      val allTxs = newBlocktree.chainOf(newBlock.id.key).toList.flatMap(_.block.txs)
-      val allTxIds = allTxs.map(_.id.key)
-      val duplicateTxs = allTxIds.size != allTxIds.toSet.size
-      println("chain has duplicate transactions: " + duplicateTxs)
-      if (duplicateTxs)
-        println(newBlocktree.chainOf(newBlock.id.key).toList.map(_.block.json).asJson.spaces4)
-    }
 
     state += blockId -> FullState(newMinState, newWallet, newMemPool)
 

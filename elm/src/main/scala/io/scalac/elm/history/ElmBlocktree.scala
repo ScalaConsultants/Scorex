@@ -4,14 +4,13 @@ import cats.data.Xor
 import io.scalac.elm.config.ElmConfig.ConsensusConf
 import io.scalac.elm.history.ElmBlocktree._
 import io.scalac.elm.state.ElmMinState
-import io.scalac.elm.transaction.{ElmBlock, ElmTransaction, TxInput, TxOutput}
+import io.scalac.elm.transaction.{ElmBlock, ElmTransaction}
 import io.scalac.elm.util.{ByteKey, Error}
 import scorex.core.NodeViewComponentCompanion
 import scorex.core.consensus.BlockChain
 import scorex.core.consensus.History.{BlockId, HistoryComparisonResult, RollbackTo}
 import scorex.core.transaction.box.proposition.PublicKey25519Proposition
 import scorex.crypto.signatures.Curve25519
-import scorex.crypto.signatures.SigningFunctions._
 
 import scala.annotation.tailrec
 import scala.util.Try
