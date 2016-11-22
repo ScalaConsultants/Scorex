@@ -32,7 +32,7 @@ case class ElmApp(elmConfig: ElmConfig) extends {
   override type NVHT = ElmNodeViewHolder
 
   override val nodeViewHolderRef = actorSystem.actorOf(Props(classOf[ElmNodeViewHolder], elmConfig))
-  override val localInterface = actorSystem.actorOf(Props(classOf[ElmLocalInterface], nodeViewHolderRef))
+  override val localInterface = actorSystem.actorOf(Props(classOf[ElmLocalInterface], nodeViewHolderRef, elmConfig))
   override val nodeViewSynchronizer = actorSystem.actorOf(
     Props(classOf[NodeViewSynchronizer[P, TX, ElmSyncInfo, ElmSyncInfoSpec.type]],
       networkController, nodeViewHolderRef, localInterface, ElmSyncInfoSpec))

@@ -41,8 +41,8 @@
         <!--<appender-ref ref="LOGFILE"/>-->
     </root>
 
-    <logger name="io.scalac.elm.simulation" level="DEBUG" />
+    <logger name="io.scalac.elm.simulation" level="INFO" />
     <logger name="io.scalac.elm.network" level="INFO" />
-    <logger name="io.scalac.elm.core" level="INFO" />
+    <logger name="io.scalac.elm.core" level="OFF" />
 
 </configuration>

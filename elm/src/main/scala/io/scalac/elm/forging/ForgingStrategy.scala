@@ -8,8 +8,8 @@ object ForgingStrategy {
     case SimpleForgingStrategyConf(targetRatio, minTxs, maxTxs) =>
       SimpleForgingStrategy(targetRatio, minTxs, maxTxs)
 
-    case DumbForgingStrategyConf =>
-      DumbForgingStrategy
+    case DumbForgingStrategyConf(maxTxs) =>
+      DumbForgingStrategy(maxTxs)
   }
 }
 
@@ -34,9 +34,9 @@ case class SimpleForgingStrategy(targetRatio: Double, minTxs: Int, maxTxs: Int) 
   }
 }
 
-case object DumbForgingStrategy extends ForgingStrategy {
-  def apply(availableCoinage: Long, targetScore: Long, memPool: ElmMemPool): Option[ForgeParams] =
-    memPool.getAll.headOption
-      .map(tx => ForgeParams(targetScore, Seq(tx)))
-      .filter(_.coinAge <= availableCoinage)
+case class DumbForgingStrategy(maxTxs: Int) extends ForgingStrategy {
+  def apply(availableCoinage: Long, targetScore: Long, memPool: ElmMemPool): Option[ForgeParams] = {
+    val txs = memPool.getAll.take(maxTxs).toSeq
+    Some(ForgeParams(targetScore, txs)).filter(fp => fp.coinAge <= availableCoinage && txs.nonEmpty)
+  }
 }

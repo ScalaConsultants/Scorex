@@ -7,6 +7,7 @@ import io.scalac.elm.history.{ElmBlocktree, ElmSyncInfo}
 import io.scalac.elm.state.{ElmMemPool, ElmMinState, ElmWallet}
 import io.scalac.elm.transaction._
 import io.scalac.elm.util._
+import org.slf4j.LoggerFactory
 import scorex.core.NodeViewHolder._
 import scorex.core.NodeViewModifier.ModifierTypeId
 import scorex.core.network.ConnectedPeer
@@ -54,6 +55,10 @@ class ElmNodeViewHolder(elmConfig: ElmConfig) extends {
   type TX = ElmTransaction
   type PMOD = ElmBlock
 
+
+  val log = LoggerFactory.getLogger(s"${getClass.getName}.${elmConfig.node.name}")
+
+  nodeView = genesisState
 
   private var walletLocked = false
 
@@ -119,7 +124,6 @@ class ElmNodeViewHolder(elmConfig: ElmConfig) extends {
     history().append(block, parentState.minState) match {
       case Xor.Right(newBlocktree) =>
         updateState(newBlocktree, block)
-
         log.info(s"Persistent modifier ${Base58.encode(block.id)} applied successfully")
         notifySubscribers(EventType.SuccessfulPersistentModifier, SuccessfulModification[P, TX, PMOD](block, source))
 
@@ -130,11 +134,11 @@ class ElmNodeViewHolder(elmConfig: ElmConfig) extends {
   }
 
   override def txModify(tx: ElmTransaction, source: Option[ConnectedPeer]): Unit = {
-    val updWallet = vault().scanOffchain(tx)
     memoryPool().applyTx(tx, minimalState()) match {
       case Xor.Right(updPool) =>
-        log.debug(s"Unconfirmed transaction $tx added to the mempool")
+        val updWallet = vault().scanOffchain(tx)
         nodeView = (history(), minimalState(), updWallet, updPool)
+        log.debug(s"Unconfirmed transaction $tx added to the mempool")
         notifySubscribers(EventType.SuccessfulTransaction, SuccessfulTransaction[P, TX](tx, source))
 
       case Xor.Left(e) =>
@@ -160,33 +164,9 @@ class ElmNodeViewHolder(elmConfig: ElmConfig) extends {
   private def updateState(newBlocktree: ElmBlocktree, newBlock: ElmBlock): Unit = {
     val blockId = newBlock.id.key
     val parentState = state(newBlock.parentId.key)
-    val newMemPool = memoryPool().merge(parentState.memPool).applyBlock(newBlock)
     val newMinState = parentState.minState.applyBlock(newBlock) //TODO: confirmation depth
+    val newMemPool = memoryPool().merge(parentState.memPool).applyBlock(newBlock).filterValid(newMinState)
     val newWallet = parentState.wallet.scanPersistent(newBlock).scanOffchain(newMemPool.getAll) //TODO: confirmation depth
-
-    if (elmConfig.node.name == "alice") {
-      val outSum = newWallet.chainTxOutputs.values.map(_.value).sum
-      println(s"WALLET BALANCE ALICE: ${newWallet.currentBalance} vs $outSum")
-
-      val aliceOuts = newBlocktree.chainOf(newBlock.id.key).toList.flatMap(_.block.txs).flatMap(_.outputs).filter(_.proposition.pubKeyBytes.base58 == newWallet.generator.pubKeyBytes.base58)
-      val aliceIns = newBlocktree.chainOf(newBlock.id.key).toList.flatMap(_.block.txs).flatMap(_.inputs).map(_.closedBoxId.key).toSet
-
-      val treeOuts = aliceOuts.filterNot(out => aliceIns(out.id.key))
-      val waltOuts = newWallet.chainTxOutputs.values.toSeq
-
-      println(s"TREE OUTS: ${treeOuts.size}, sum: ${treeOuts.map(_.value).sum}")
-      println(s"WALT OUTS: ${waltOuts.size}, sum: ${waltOuts.map(_.value).sum}")
-
-      val outs = newBlocktree.chainOf(newBlock.id.key).toList.flatMap(_.block.txs).flatMap(_.outputs).map(_.id.key)
-      val ins = newBlocktree.chainOf(newBlock.id.key).toList.flatMap(_.block.txs).flatMap(_.inputs).map(_.closedBoxId.key)
-      println(s"chain has duplicate outs: " + (outs.size != outs.toSet.size))
-      println(s"chain has duplicate ins: " + (ins.size != ins.toSet.size))
-
-      val allOuts = newBlocktree.chainOf(newBlock.id.key).toList.flatMap(_.block.txs).flatMap(_.outputs)
-      val allIns = newBlocktree.chainOf(newBlock.id.key).toList.flatMap(_.block.txs).flatMap(_.inputs).map(_.closedBoxId.key).toSet
-      val unspentOuts = allOuts.filterNot(o => allIns(o.id.key))
-      println(s"All unspent outs sum up to: ${unspentOuts.map(_.value).sum}")
-    }
 
     state += blockId -> FullState(newMinState, newWallet, newMemPool)
 

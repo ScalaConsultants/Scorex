@@ -19,7 +19,7 @@ object ElmConfig {
 
   sealed trait ForgingStrategyConf
   case class SimpleForgingStrategyConf(targetRatio: Double, minTxs: Int, maxTxs: Int) extends ForgingStrategyConf
-  case object DumbForgingStrategyConf extends ForgingStrategyConf
+  case class DumbForgingStrategyConf(maxTxs: Int) extends ForgingStrategyConf
   case class ForgingConf(delay: FiniteDuration, strategy: ForgingStrategyConf)
 
   case class NodeConf(appName: String = "elm", version: String = "1.0.0", name: String,
@@ -82,7 +82,10 @@ object ElmConfig {
       )
 
     case "dumb-forging-strategy" =>
-      DumbForgingStrategyConf
+      val strategyConf = config.getConfig("dumb-forging-strategy")
+      DumbForgingStrategyConf(
+        maxTxs = strategyConf.getInt("max-transactions")
+      )
 
     case other =>
       throw new BadValue(config.origin(), "strategy", s"Invalid value for strategy: $other")

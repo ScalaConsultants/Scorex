@@ -26,8 +26,8 @@ object ElmWallet {
 
 case class ElmWallet(secret: PrivateKey25519,
                      chainTxOutputs: Map[ByteKey, TxOutput] = Map.empty,
-                     offchainTxOutputs: Set[ByteKey] = Set.empty,
-                     currentBalance: Long = 0)
+                     balance: Long = 0,
+                     failedTransactions: List[ElmTransaction] = Nil)
   extends Wallet[PublicKey25519Proposition, ElmTransaction, ElmBlock, ElmWallet] {
 
   override type S = PrivateKey25519
@@ -49,20 +49,17 @@ case class ElmWallet(secret: PrivateKey25519,
 
     val reducedChainTxOuts = chainTxOutputs -- outIds
 
-    //TODO how to restore balance when transactions are forgotten?
-    ElmWallet(secret, reducedChainTxOuts, offchainTxOutputs ++ outIds, currentBalance - sum)
+    copy(chainTxOutputs = reducedChainTxOuts, balance = balance - sum)
   }
 
   def scanOffchain(txs: Traversable[ElmTransaction]): ElmWallet =
     txs.foldLeft(this)((w, tx) => w.scanOffchain(tx))
 
   override def scanPersistent(block: ElmBlock): ElmWallet = {
-    val reducedOffchain = offchainTxOutputs -- block.txs.flatMap(_.outputs).map(_.id.key)
-
     val income = for {
       tx <- block.txs
       out <- tx.outputs
-      if out.proposition.pubKeyBytes.key == pubKeyBytes && !reducedOffchain(out.id.key)
+      if out.proposition.pubKeyBytes.key == pubKeyBytes
     } yield out.id.key -> out
 
 
@@ -75,7 +72,7 @@ case class ElmWallet(secret: PrivateKey25519,
     val updatedChainTxOutputs = chainTxOutputs -- outgoings ++ income
     val newBalance = updatedChainTxOutputs.values.map(_.value).sum
 
-    ElmWallet(secret, updatedChainTxOutputs, reducedOffchain, newBalance)
+    copy(chainTxOutputs = updatedChainTxOutputs, balance = newBalance)
   }
 
   def accumulatedCoinAge(currentHeight: Int): Long =

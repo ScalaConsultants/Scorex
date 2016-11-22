@@ -28,9 +28,9 @@ object ResultCruncher {
     val startingFunds = node.app.elmConfig.genesis.initialFunds
     payments.foldLeft(startingFunds) {
       case (funds, Payment(_, sender, recipient, amount, fee)) =>
-        if (sender == node)
+        if (sender == node.publicKey)
           funds - amount - fee
-        else if (recipient == node)
+        else if (recipient == node.publicKey)
           funds + amount
         else
           funds

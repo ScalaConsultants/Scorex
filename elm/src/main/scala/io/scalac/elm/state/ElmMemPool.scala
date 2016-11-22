@@ -50,6 +50,9 @@ case class ElmMemPool(offchainTxs: Map[ByteKey, ElmTransaction] = Map.empty) ext
   def merge(other: ElmMemPool): ElmMemPool =
     ElmMemPool(offchainTxs ++ other.offchainTxs)
 
+  def filterValid(minState: ElmMinState): ElmMemPool =
+    ElmMemPool(offchainTxs.filter { case (_, tx) => minState.isValid(tx) })
+
 
   @deprecated("unnecessary", "")
   override def put(tx: ElmTransaction): Try[ElmMemPool] = ???

@@ -5,26 +5,27 @@ import javax.ws.rs.{Path, Produces}
 import akka.actor.{ActorRef, ActorRefFactory}
 import akka.http.scaladsl.server.Route
 import akka.pattern.ask
+import akka.util.Timeout
 import io.scalac.elm.core.ElmNodeViewHolder.{GetWalletForTransaction, ReturnWallet, WalletForTransaction}
 import io.scalac.elm.history.ElmBlocktree
 import io.scalac.elm.state.{ElmMemPool, ElmMinState, ElmWallet}
-import io.scalac.elm.transaction.ElmTransaction
 import io.scalac.elm.util.ByteKey
 import io.swagger.annotations._
-import scorex.core.LocalInterface.LocallyGeneratedTransaction
-import scorex.core.NodeViewHolder
 import scorex.core.NodeViewHolder.{CurrentView, GetCurrentView}
 import scorex.core.api.http.ApiRoute
 import scorex.core.settings.Settings
 import scorex.core.transaction.box.proposition.PublicKey25519Proposition
 
 import scala.concurrent.Future
+import scala.concurrent.duration._
 
 @Path("/wallet")
 @Api(value = "/wallet")
 class WalletApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(implicit val context: ActorRefFactory) extends ApiRoute {
 
   import context.dispatcher
+
+  implicit val askTimeout = Timeout(15.seconds)
 
   override lazy val route: Route = pathPrefix("wallet") {
     payment ~ address ~ funds ~ coinage
@@ -82,7 +83,7 @@ class WalletApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(implicit 
   ))
   def funds: Route = get {
     path("funds") {
-      complete(getWallet.map(_.currentBalance.toString))
+      complete(getWallet.map(_.balance.toString))
     }
   }
 
