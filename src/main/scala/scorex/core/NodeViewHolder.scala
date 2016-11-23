@@ -35,7 +35,17 @@ import scala.util.{Failure, Success}
 trait NodeViewHolder[P <: Proposition, TX <: Transaction[P], PMOD <: PersistentNodeViewModifier[P, TX]]
   extends Actor {
 
-  def log: Logger
+  protected def log: Logger
+
+  protected def timeLogger: Logger
+
+  protected def logTimed[R](desc: String)(op: => R): R = {
+    val t0 = System.currentTimeMillis()
+    timeLogger.info(s"Starting operation [$desc] ...")
+    val res = op
+    timeLogger.info(s"Operation [$desc] took ${System.currentTimeMillis() - t0} ms")
+    res
+  }
 
   import NodeViewHolder._
 

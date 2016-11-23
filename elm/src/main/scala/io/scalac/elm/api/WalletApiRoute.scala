@@ -3,10 +3,15 @@ package io.scalac.elm.api
 import javax.ws.rs.{Path, Produces}
 
 import akka.actor.{ActorRef, ActorRefFactory}
+import akka.http.scaladsl.marshalling.{Marshaller, _}
+import akka.http.scaladsl.model.MediaTypes
 import akka.http.scaladsl.server.Route
 import akka.pattern.ask
 import akka.util.Timeout
-import io.scalac.elm.core.ElmNodeViewHolder.{GetWalletForTransaction, ReturnWallet, WalletForTransaction}
+import io.circe.Json
+import io.circe.syntax._
+import io.circe.generic.auto._
+import io.scalac.elm.core.ElmNodeViewHolder._
 import io.scalac.elm.history.ElmBlocktree
 import io.scalac.elm.state.{ElmMemPool, ElmMinState, ElmWallet}
 import io.scalac.elm.util.ByteKey
@@ -14,7 +19,6 @@ import io.swagger.annotations._
 import scorex.core.NodeViewHolder.{CurrentView, GetCurrentView}
 import scorex.core.api.http.ApiRoute
 import scorex.core.settings.Settings
-import scorex.core.transaction.box.proposition.PublicKey25519Proposition
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
@@ -27,35 +31,51 @@ class WalletApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(implicit 
 
   implicit val askTimeout = Timeout(15.seconds)
 
+  implicit val jsonMarshaller: ToEntityMarshaller[Json] =
+    Marshaller.StringMarshaller.wrap(MediaTypes.`application/json`)(_.spaces4)
+
   override lazy val route: Route = pathPrefix("wallet") {
-    payment ~ address ~ funds ~ coinage
+    payment ~ relativePayment ~ address ~ funds ~ coinage
   }
 
   @Path("/payment")
   @ApiOperation(value = "Make payment", httpMethod = "GET")
-  @Produces(Array("text/plain"))
   @ApiImplicitParams(Array(
     new ApiImplicitParam(name = "address", required = true, dataType = "string", paramType = "query", value = "XxYyZz"),
     new ApiImplicitParam(name = "amount", required = true, dataType = "integer", paramType = "query", value = "1000"),
     new ApiImplicitParam(name = "fee", required = true, dataType = "integer", paramType = "query", value = "10")
   ))
   @ApiResponses(Array(
-    new ApiResponse(code = 200, message = "OK")
+    new ApiResponse(code = 200, message = "non empty string if payment succeeded")
   ))
   def payment: Route = get {
     path("payment") {
       parameter("address", "amount".as[Long], "fee".as[Int]) { (address, amount, fee) =>
         complete {
-          val recipient = PublicKey25519Proposition(ByteKey.base58(address).array)
-          getWalletForTx.map {
-            case WalletForTransaction(Some(wallet), height) =>
-              val maybePayment = wallet.createPayment(recipient, amount, fee, height)
-              nodeViewHolder ! ReturnWallet(maybePayment)
-              maybePayment.map(200 -> _.id.base58).getOrElse(400 -> "Insufficient funds")
+          nodeViewHolder.ask(PaymentRequest(address, amount, fee))
+            .mapTo[PaymentResponse].map(_.asJson)
+        }
+      }
+    }
+  }
 
-            case WalletForTransaction(None, _) =>
-              400 -> "Wallet locked"
-          }
+  @Path("/relative_payment")
+  @ApiOperation(value = "Make payment", httpMethod = "GET")
+  @ApiImplicitParams(Array(
+    new ApiImplicitParam(name = "address", required = true, dataType = "string", paramType = "query", value = "XxYyZz"),
+    new ApiImplicitParam(name = "ratio", required = true, dataType = "double", paramType = "query", value = "0.5"),
+    new ApiImplicitParam(name = "fee", required = true, dataType = "integer", paramType = "query", value = "10"),
+    new ApiImplicitParam(name = "min_balance", required = true, dataType = "integer", paramType = "query", value = "500")
+  ))
+  @ApiResponses(Array(
+    new ApiResponse(code = 200, message = "non empty string if payment succeeded")
+  ))
+  def relativePayment: Route = get {
+    path("relative_payment") {
+      parameter("address", "ratio".as[Double], "fee".as[Int], "min_balance".as[Long]) { (address, ratio, fee, minBalance) =>
+        complete {
+          nodeViewHolder.ask(PaymentRequestRelative(address, ratio, fee, minBalance))
+            .mapTo[PaymentResponse].map(_.asJson)
         }
       }
     }
@@ -105,6 +125,4 @@ class WalletApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(implicit 
   def getWallet: Future[ElmWallet] =
     getView.map(_.vault)
 
-  def getWalletForTx: Future[WalletForTransaction] =
-    nodeViewHolder.ask(GetWalletForTransaction).mapTo[WalletForTransaction]
 }

@@ -2,7 +2,7 @@ package io.scalac.elm.network
 
 import io.circe._
 import io.circe.generic.auto._
-
+import io.scalac.elm.core.ElmNodeViewHolder.PaymentResponse
 import io.scalac.elm.transaction.ElmBlock
 
 object Deserializer {
@@ -22,4 +22,7 @@ object Deserializer {
 
   val asBlockList: Parse[List[ElmBlock]] = s =>
     parser.parse(s).toTry.map(_.asArray.get.map(ElmBlock.fromJson).map(_.get)).get
+
+  val asPaymentResponse: Parse[PaymentResponse] = s =>
+    parser.parse(s).toTry.flatMap(_.as[PaymentResponse].toTry).get
 }

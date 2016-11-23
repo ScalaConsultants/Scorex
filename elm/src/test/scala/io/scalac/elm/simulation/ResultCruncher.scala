@@ -25,7 +25,7 @@ object ResultCruncher {
   }
 
   private def calcExpectedFundsWithoutEarnedFees(node: NetworkNode, payments: Seq[Payment]): Long = {
-    val startingFunds = node.app.elmConfig.genesis.initialFunds
+    val startingFunds = node.elmConfig.genesis.initialFunds
     payments.foldLeft(startingFunds) {
       case (funds, Payment(_, sender, recipient, amount, fee)) =>
         if (sender == node.publicKey)

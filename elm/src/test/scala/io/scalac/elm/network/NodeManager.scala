@@ -8,12 +8,20 @@ import org.slf4j.LoggerFactory
 import scala.util.{Failure, Success, Try}
 
 class NodeManager(simConfig: SimConfig) {
+  class MockNode(override val elmConfig: ElmConfig) extends NetworkNode(null, simConfig) {
+    override def run(): Unit = ()
+    override def stopAll(): Unit = ()
+  }
 
   private val log = LoggerFactory.getLogger(getClass)
 
   private val initInterval = 1000
   private val initAttempts = 20
 
+  lazy val mockNode = new MockNode(
+    ElmConfig.load(
+      ConfigFactory.parseResources("simulation-node1.conf")
+        .withFallback(ConfigFactory.load("simulation-common.conf"))))
 
   def initializeNodes(): Seq[NetworkNode] = {
     val commonConf = ConfigFactory.load("simulation-common.conf")
@@ -23,14 +31,14 @@ class NodeManager(simConfig: SimConfig) {
   }
 
   def shutdownNodes(nodes: Seq[NetworkNode]): Unit =
-    nodes.foreach(_.app.stopAll())
+    nodes.foreach(_.stopAll())
 
 
   private def initializeNode(i: Int, commonConf: Config): NetworkNode = {
     val mergedConf = ConfigFactory.parseResources(s"simulation-node$i.conf").withFallback(commonConf)
     val app = ElmApp(ElmConfig.load(mergedConf))
-    val node = NetworkNode(app, simConfig)
-    node.app.run()
+    val node = new NetworkNode(app, simConfig)
+    node.run()
 
     waitForInitialization(node, initAttempts)
     node
