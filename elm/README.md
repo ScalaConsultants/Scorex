@@ -1,170 +1,225 @@
-# 1. Overview
+# Project Elm
 
-# 2. Implementation details
+Elm is a proof-of-concept cryptocurrency with the following characteristics:
 
-    - Peercoin
-      TODO
-    
-    - Multi-chain
-      TODO
-# 3. Modifications in Scorex
+- Peercoin-like Proof-of-Stake consensus protocol
+- nodes store multiple best chains and continually contribute to all of them
+- based on Scorex 2.0 framework
 
-    TODO - only listed files that have changes 
-    
-    - in `src/main/scala/scorex/core/NodeViewHolder.scala`
-    - in `src/main/scala/scorex/core/api/http/CompositeHttpService.scala`
-    - in `src/main/scala/scorex/core/app/Application.scala`
-    - in `src/main/scala/scorex/core/network/NetworkController.scala`
-    - in `src/main/scala/scorex/core/network/NodeViewSynchronizer.scala`
-    - in `src/main/scala/scorex/core/network/peer/PeerDatabase.scala`
-    - in `src/main/scala/scorex/core/network/peer/PeerDatabaseImpl.scala`
-    - in `src/main/scala/scorex/core/network/peer/PeerManager.scala`
-    - in `src/main/scala/scorex/core/transaction/Transaction.scala`
-  
-# 4. Running
+## Implementation Details
 
-   Application node can be run with `java -jar` command but you have to pass `-Dconfig.file=conf_file` that points to configuration file, for example `java -Dconfig.file=conf_file -jar `.
-   To create executable jar with all dependencies you have to execute sbt command `sbt "project elm" assembly`, jar will be created in `elm/target` directory.
-   There are 3 configuration files provided so nodes can be launched by executing following commands
-   ```
-   java -Dconfig.file=elm/application-1.conf -jar elm/target/elm.jar
-   java -Dconfig.file=elm/application-2.conf -jar elm/target/elm.jar
-   java -Dconfig.file=elm/application-3.conf -jar elm/target/elm.jar
-   ```
-   After that every node will start http server with swagger accessible at url as follows: 
+### Peercoin-like Consensus
 
-   ```
-   node1 http://localhost:9085/swagger
-   node2 http://localhost:9087/swagger
-   node3 http://localhost:9089/swagger
-   ```
-    
-   In configuration it is set that node1 generates genesis block and adds to its wallet 10000 coins
-    
-### Api endpoints
-    
-#### `/wallet`
-This is main endpoint used to interact with application, it allows user to check wallet balance and make payments.
+Peercoin uses both Proof-of-Stake and Proof-of-Work systems (the latter is meant to become obsolete over time)
+and a checkpointing mechanism - a form of centralized supervision. Like in Bitcoin, the transactions are made
+up of series of inputs and outputs, in our code represented by `TxInput` and `TxOutput` classes. Peercoin introduces
+the concept of _coin age_ which is used for minting PoS blocks - it is defined as currency amount times 
+holding period. Also worth mentioning is that Peercoin has a steady unlimited inflation, and transactions fees are fixed
+and destroyed when a block is incorporated in to the chain. For more information about Peercoin see its 
+[white paper](https://peercoin.net/assets/paper/peercoin-paper.pdf) and [wiki](https://wiki.peercointalk.org).
 
-- `GET /wallet/address` - returns address for wallet associated with given node that can be use to perform payments
 
-- `GET /wallet/funds` - returns amount of funds that is associated with wallet associated with given node
+#### Main Differences
+Elm differs from Peercoin in the following aspects:
 
-- `GET /wallet/payment` - performs payment to specified `address`, payment requires to specify positive values for `amount` (coins that are transferred to address) and `fee` (coins for node that will forge block) 
+- only the Proof-of-Stake system is used, with no checkpointing
+- coin age is calculated based on the depth of owned transaction outputs in the chain
+- there is no inflation: the sum of coins is preconfigured, and nodes earn transactions fees when forging new blocks
 
-- `GET /wallet/coinage` - returns amount of coinage that is associated with wallet associated with given node that can be used for mining
+#### Coin Age
 
-#### `/blocktree`
-This endpoint is for getting information about blocktree, it allows quering specific blockchains form blocktree
+The main motivation for using chain depth instead of actual time
+is that we wanted to avoid dealing with timestamps and time synchronization. As the chain depth is relative to the time 
+passed it should result in the similar effect regarding the probabilty of forging a block by a stakeholder. Technically it is realized
+by `TxOutput` class having `height` property which is established during block incorporation.
 
-- `GET /blocktree/mainchain` - returns main chain blocks (ids only)
 
-- `GET /blocktree/blocks/chain/{n}` - returns chain by score, where n = 1 is chain with best score, 2 is second best and so on (block with transactions in json format)
+#### Proof of Stake
 
-- `GET /blocktree/leaves` -  return leafs of blocktree (ids only)
+Like in Peercoin the first transaction in a block is the so called _coinstake_ and it provides closed boxes (UTXOs)
+to be used for coin age calculation. Those boxes are returned to the miner in a new `TxOuput` (thus the depth
+factor of available coin age is reset) along with the sum of fees of the transactions in the forged block. Note that the 
+chain depth is calculate only once when a new block is created, there is no need to reevaluate as the chain grows. 
+Because fees are the only way a miner can gain from forging a block, empty blocks (without any regular transactions) are 
+explicitly forbidden.
+ 
+### Multi-chain / Blocktree
 
-- `GET /blocktree/chain/{n}` -  returns chain by score, where n = 1 is chain with best score, 2 is second best and so on (ids only)
+In order to store multiple chains the blocks are organized into a tree of blocks (blocktree), each branch of the
+tree being a competing blockchain. Whenever two competing (trying to extend the same parent) blocks are encountered the
+chain is forked into two branches. After each successful update to the blocktree, the number of branches is limited
+to a configured number `N`. If the number of branches exceeds `N`, they are compared by accumulated score 
+(the coin age put into the blocks), and the lowest score branches are removed.
 
-- `GET /blocktree/block/{id}` - returns block form block tree by given id (block with transactions in json format)
+Technically, the tree is realized as `ElmBlocktree` class that holds a `Map` from block ID to a `Node` (a class
+that holds a block along with some extra data). The `Nodes` are linked via parent-children references, and the leaves
+are kept as a separate set of IDs. The true root of the tree is the so called _zero node_ as defined in `Elmblocktree.zeroNode`,
+but it's just a convienient implementation detail. The logical root is the genesis block/node created during startup
+in `ElmNodeviewHolder` (if the configuration allows it).
 
-#### `/peers`
-This endpoint is for getting information about peers that participates in network
+#### Synchronizing Blocktrees
 
-- `GET /peers/connected` - return list of peers connected to given node 
+Synchronization was a challenge because the standard `Equal`, `Older`, `Younger` relation proposed by Scorex doesn't apply 
+straight-forwardly to blocktrees. The only situation when a blocktree is `Older` is when it cointains all the leaves 
+of another blocktree at some deeper level. So apart from the obvious `Equal` case, in all other situations a blocktree is
+considered `Younger`, thus two blocktrees can be mutually `Younger`. In the extreme case two mutually `Younger` blocktrees
+could have completely different sets of leaves.
+ 
+This means that it is impossible to establish `startingPoints`/`extensions` without the knowledge of the other tree.
+That's why the `ElmSyncInfo` class provides the set of _all_ the blocks in the tree and a set of its leaves. This of
+course may become a problem as the blocktree grows, so a more efficient solution would be desired.
 
-- `GET /peers/blacklisted` - returns blacklisted pears
+#### Storing State
 
-- `POST /peers/connect` - connects to specific node by ip address and port, example content of request: `{"host":"127.0.0.1", "port":"9084"}` 
+To be able to continually contribute to parallel chains nodes need to store state associated with each of them. Additionally, 
+in the process of removing branches from the tree, a chain could be rolled back to any previous parent block. Therefore we
+need to store the state for all blocks in the blocktree (actually we could probably think of some optimization, like a cutoff 
+at a certain depth). 
 
-- `GET /peers/all` - return list of all known pears
+This is realized through `ElmNodeViewHolder` having a `Map` from block ID to `FullState` class, which consists of a minimal 
+state (a collection UTXOs), a wallet (UTXOs owned by this node), and a memory pool (transaction which have not made it to 
+the chain yet). 
+
+Elm does not store any state or blocks persistently.
+
+
+## Working with Scorex 2.0
+
+Scorex definitely helped us create this project. We especially appreciate its networking capabilities - building a peer
+network required little involvement from us. However, as at the time of this development, Scorex 2.0 was still in an early
+phase, working with it came with several challenges.
+
+### Versioning
+
+One of those challenges was the fact that Scorex was not realeased, and it was continually improved upon into the master branch without any versioning.
+That's why we created this fork. On several occasions we tried to rebase our work against the upstream, but that proved to 
+be too costly. The last Scorex change that has made it into our solution has been git-tagged: `scorex-upstream-2016-11-13`
+
+### Modifications
+Also, we needed to make the several changes to the Scorex code to make our solution work, the most important ones are:
+
+- `NodeViewHolder` - multiple methods were changed from `private` to `protected` to allow overriding in `ElmNodeViewHolder`, also
+small changes to allow handling errors with `cats.data.Xor` instead of `scala.util.Try`
+- `NodeViewSynchronizer` - changed to broadcast unconfirmed transactions to peers
+- `Transaction` - we needed a consistent tx ID for simulation
+- `PeerDatabase` (and other classes) - to be able to rerun the simulation the database had to be closed properly 
+- `NetworkController` (and other classes) - to be able to run the `PeersApiRoute`
+
+### Heavy Interfaces
+
+We have found that many extended traits forced us to implement methods we didn't need. We have marked those methods with 
+`@deprecated` annotation (see `ElmBlocktree`, `ElmMinState`, et al.)
+
+
+## Using the Application
 
 ### Configuration
-Configuration is encoded using HOCON (Human-Optimized Config Object Notation), since valid JSON is also valid HOCON, `elm` configuration is added next to existing `Scorex` configuration.
 
-`elm` is root for configuration for this project
-There are 4 sections inside it:
- - `node` which has basic information about particular node
+All configuration options are described in [reference.conf](https://github.com/ScalaConsultants/Scorex/blob/elm-develop/elm/src/main/resources/reference.conf), and those specific to the simulation - in 
+[simulation-common.conf](https://github.com/ScalaConsultants/Scorex/blob/elm-develop/elm/src/test/resources/simulation-common.conf). 
+Scorex settings, which are usually specified as a separate JSON file, have been incorporated into the `*.conf` files
+by utilizing the fact that HOCON is a superset of JSON.
  
-   `app-name` and `name` - strings used to derive name that is given to akka actor system that is created for given node.
- 
-   `version` - value that has to be 3 numbers separated with dots like `1.1.1` this value is passed to NetworkController and than used for handshake with other nodes
+Several ready to use configuration files have been prepared: `elm/application-[1-3].conf`. Each defines only the most
+relevant subset of settings (the missing ones are resolved from `reference.conf`)
+
+For simulation the configuration files: `elm/src/test/resources/simulation-node[1-4].conf` are first resolved against
+`simulation-common.conf` and then `reference.conf`.
+
+### Building
+
+To build the application run:
+
+```
+sbt "project elm" assembly
+```
+
+This will create a fat jar under `elm/target/elm.jar`.
+  
+### Running
+
+To run a single node, from `elm` directory type:
+
+```
+java -Dconfig.file=path/to/config -jar target/elm.jar
+```
+
+If `-Dconfig.file` property is omitted the `reference.conf` will be used. To run a network of the 3 predefined nodes, run:
+
+```
+java -Dconfig.file=application-1.conf -jar target/elm.jar
+java -Dconfig.file=application-2.conf -jar target/elm.jar
+java -Dconfig.file=application-3.conf -jar target/elm.jar
+```
+
+After that each node will start a HTTP server with Swagger accessible at following URLs: 
+
+```
+node1 http://localhost:9085/swagger
+node2 http://localhost:9087/swagger
+node3 http://localhost:9089/swagger
+```
     
-   `shutdown-hook` - boolean value used to indicate that after application shutdown there should be message logged (in our case).
+### Simulation
+
+To test the application, we created a simulation which runs multiple nodes from within the test. To run it, type:
+
+```
+sbt "project elm" test
+```
+
+The nodes are defined in configuration files `elm/src/test/resources/simulation-node[1-4].conf`. The simulation will try 
+to make a configured number of random transactions between those nodes, and assert whether the balances of each wallet
+check out.
+
+For debugging it may a good idea to adjust `elm/src/test/resources/logback-test.xml`.
     
-   `key-pair-seed` - bas58 encoded value that is used to deterministically generate secret for wallet associated with given node
-    
-   example:
-   ```
-   node {
-       app-name = "elm"
-       version = "1.0.0"
-       name = "local-node"
-       shutdown-hook = true
-       key-pair-seed = "5rcRxdD7jwGDe9XgmEodHdgo6681DVtb1wT3DocNchuR"
-   }
-   ```
- - `genesis` which holds configuration for creating genesis block
-    
-    `generate` - boolean value that indicates if genesis block should be created for given node, it should be set to `true` only for one node
-    example:
-    
-    `initial-funds` - amount of conis that will be added to wallet in genesis transaction
-    
-    `grains` - size of TXOs that will be added in genesis block, for example if `initial-funds` is set to 100 and `grains` is set to 10 there will be 10 txo in genesis block everyone will have 10 coins.
-    
-    example:
-    ```
-    genesis {
-        generate = false
-        initial-funds = 0
-        grains = 10
-    }
-    ```
-    
-- `consensus` configuration defining parameters of blocktree and coinage spent on blocks
-    
-    `N` - max number of branches in blocktree
-    
-    `confirmation-depth` - unused for now
-    
-    `base-target` - it is target score of coinage that should be spent when forging new block, currently it's constant, but nodes can choose to spend more
-    
-    example:
-    ```
-    consensus {
-        N = 8
-        confirmation-depth = 1
-        base-target = 100
-    }
-    ```
-    
-- `forging` configuration defining forging new blocks
-    
-    `delay` - delay between 2 consecutive block forging attempts
-    
-    `strategy` - name of strategy that should be used for forging new block currently there are 2 available: `simple-forging-strategy` and `dumb-forging-strategy`. 
-    Depending on selected `strategy` there can be further configuration. 
-    
-    example:
-    ```
-    forging {
-        delay = 10s
-        strategy = "simple-forging-strategy"
-        simple-forging-strategy {
-          target-ratio = 1.0
-          min-transactions = 1
-          max-transactions = 100
-        }
-      }
-    ```    
-    
-    
-    
-    
-    
-    
-# 5. Testing
-    TODO
-    
-# 6. Conclusions
-    TODO
+### HTTP API Endpoints
+
+Two `ApiRoutes` have been added: `WalletApiRoute` and `BlocktreeApiRoute`. They defined a number endpoints 
+for interacting with wallets and blocktrees. The most useful are: 
+
+- `GET /wallet/address` - returns the address (base58 encoded public key) for wallet associated with given node. 
+It can be used to make payments to that node.
+
+- `GET /wallet/payment` - performs payment by specifying `address`, `amount` and `fee`, it will return an ID of the 
+newly made transaction.
+
+- `GET /blocktree/blocks/chain/{n}` - returns a chain (blocks with transactions in JSON format) by score, where n = 1 is 
+the main chain, 2 is second best and so on.
+
+
+## Conclusions
+
+### Challenges
+Working on this project has been both inspiring and challenging. The main challenges included:
+
+- understanding the domain: cryptocurrencies, blockchains, PoW/PoS schemes
+- debugging: it's always hard to debug highly concurrent applications, and here additional parallelism was introcuded by
+the blocktree itself
+- understanding the inner working of Scorex, with almost no documentation, and being able to tune it to our needs
+
+### Open Questions
+
+While coming up with this solution several questions arose, that we haven't been able to answer yet:
+
+- How often do the main chain switch-overs (when adding new blocks causes the chains to be reordered wrt their score) 
+occur and how do they affect validity of transactions?
+- If we implemented a bitcoin-like confirmation depth for transactions what effect would that have on the main 
+chain switch-over frequency?
+- How can nodes take advantage of the protocol to maximize their gains? What different block forging and transaction 
+making (how to organize TXOs) strategies can they assume?
+- How can dishonest nodes cheat the protocol, and what could we do to prevent that?
+
+### What We Learned
+We have:
+- expanded our knowledge on the technical details of cryptocurrencies, we learned how Proof-of-Work and 
+Proof-of-Stake work 
+- learned that other proposals exist like Proof-of-Activity or Proof-of-Burn, and that we can mix those to create 
+hybrid systems
+- discovered new applications for blockchain technologies like digital identities, smart contracts, distributed storage
+ or new opportunities for banking; we have built a keen interest on how those technologies will evolve
+- we gained a considerable insight into how Scorex works, and came to a consensus about several possible improvements
+
+
+
