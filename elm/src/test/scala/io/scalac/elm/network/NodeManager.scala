@@ -23,10 +23,10 @@ class NodeManager(simConfig: SimConfig) {
       ConfigFactory.parseResources("simulation-node1.conf")
         .withFallback(ConfigFactory.load("simulation-common.conf"))))
 
-  def initializeNodes(): Seq[NetworkNode] = {
+  def initializeNodes(): Seq[NetworkNode] = mockNode +: {
     val commonConf = ConfigFactory.load("simulation-common.conf")
 
-    for (i <- 1 to simConfig.networkSize)
+    for (i <- 2 to simConfig.networkSize)
       yield initializeNode(i, commonConf)
   }
 

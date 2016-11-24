@@ -133,10 +133,10 @@ case class ElmBlocktree private(
     ElmSyncInfo(answer, leaves, blocks.keySet)
 
   def continuationIds(syncInfo: ElmSyncInfo): List[ByteKey] =
-    findContinuations(findStartingPoints(blocks.keySet, syncInfo.blocks))
+    findContinuations(findStartingPoints(leaves, syncInfo.blocks).toList, syncInfo.blocks)
 
   override def applicable(block: ElmBlock): Boolean =
-    block.parentId.key == zeroNode.id || blocks.contains(block.parentId) && !blocks.contains(block.id)
+    block.parentId.key == zeroNode.id || (blocks.contains(block.parentId) && !blocks.contains(block.id))
 
   /**
     * Find a leaf with the lowest score
@@ -224,26 +224,27 @@ case class ElmBlocktree private(
       )
     }
 
-  private def findStartingPoints(theseBlocks: Set[ByteKey], otherBlocks: Set[ByteKey]): List[ByteKey] =
-    if (theseBlocks.isEmpty) Nil else {
-      val diff = theseBlocks.diff(otherBlocks)
+  private def findStartingPoints(theseLeaves: Set[ByteKey], otherBlocks: Set[ByteKey]): Set[ByteKey] =
+    if (theseLeaves.isEmpty) Set.empty else {
+      val diff = theseLeaves.diff(otherBlocks)
       val parents = diff.map(blocks).map(_.parentId)
       val found = parents.intersect(otherBlocks)
       val deeper = parents.diff(found)
-      found.toList ::: findStartingPoints(deeper, otherBlocks)
+      found ++ findStartingPoints(deeper, otherBlocks)
     }
 
-  private def findContinuations(nodeIds: List[ByteKey]): List[ByteKey] = {
+  private def findContinuations(nodeIds: List[ByteKey], otherBlocks: Set[ByteKey]): List[ByteKey] = {
     val directChildren = for {
       nodeId <- nodeIds
       node <- blocks.get(nodeId).toList
       childId <- node.children
+      if !otherBlocks(childId)
     } yield childId
 
     if (directChildren.isEmpty)
       Nil
     else
-      directChildren ::: findContinuations(directChildren)
+      directChildren ::: findContinuations(directChildren, otherBlocks)
   }
 
 

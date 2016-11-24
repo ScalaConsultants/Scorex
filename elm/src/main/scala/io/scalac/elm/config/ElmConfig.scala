@@ -10,10 +10,11 @@ import scorex.core.app.ApplicationVersion
 import scorex.core.settings.Settings
 import scorex.crypto.encode.Base58
 
+import scala.collection.JavaConverters._
 import scala.concurrent.duration.{Duration, FiniteDuration}
 
 object ElmConfig {
-  case class GenesisConf(generate: Boolean, initialFunds: Long, grains: Int)
+  case class GenesisConf(generate: Boolean, totalFunds: Long, grains: Int, distribution: List[String])
 
   case class ConsensusConf(N: Int, confirmationDepth: Int, baseTarget: Long)
 
@@ -57,8 +58,9 @@ object ElmConfig {
 
   private def genesis(config: Config) = GenesisConf(
     generate = config.getBoolean("generate"),
-    initialFunds = config.getLong("initial-funds"),
-    grains = config.getInt("grains")
+    totalFunds = config.getLong("total-funds"),
+    grains = config.getInt("grains"),
+    distribution = config.getStringList("distribution").asScala.toList
   )
 
   private def consensus(config: Config) = ConsensusConf(

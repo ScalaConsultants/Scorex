@@ -85,12 +85,8 @@ class ElmNodeViewHolder(forger: Forger, elmConfig: ElmConfig) extends {
     savedState += (ElmBlock.zero.id.key -> zeroFState)
 
     if (elmConfig.genesis.generate) {
-      val initialAmount = elmConfig.genesis.initialFunds
 
-      // we generate a bunch of outputs because of coinage destruction problem
-      // another way to approach this would be to retain age of coinstake change, but that would require outputs to be explicitly timestamped
-      val grains = elmConfig.genesis.grains
-      val genesisTx = ElmTransaction(Nil, List.fill(grains)(TxOutput(initialAmount / grains, emptyWallet.secret.publicImage)), 0)
+      val genesisTx = createGenesisTx(emptyWallet.generator)
 
       val unsignedBlock: ElmBlock = ElmBlock(ElmBlock.zero.id, 0L, Array(), emptyWallet.generator, Seq(genesisTx)).updateHeights(1)
       val signature = PrivateKey25519Companion.sign(emptyWallet.secret, unsignedBlock.bytes)
@@ -109,6 +105,20 @@ class ElmNodeViewHolder(forger: Forger, elmConfig: ElmConfig) extends {
     } else {
       (zeroBlocktree, emptyMinState, emptyWallet, emptyMemPool)
     }
+  }
+
+  private def createGenesisTx(defaultRecipient: PublicKey25519Proposition): ElmTransaction = {
+    val initialAmount = elmConfig.genesis.totalFunds
+    val grains = elmConfig.genesis.grains
+    val addresses = elmConfig.genesis.distribution
+
+    val recipients =
+      if (addresses.isEmpty) Seq(defaultRecipient)
+      else addresses.map(addr => PublicKey25519Proposition(Base58.decode(addr).get))
+    val recipientsPerGrain = (0 to (grains / recipients.size)).flatMap(_ => recipients).take(grains)
+
+    val outputs = recipientsPerGrain.map(TxOutput(initialAmount / grains, _))
+    ElmTransaction(Nil, outputs.toList, 0)
   }
 
   override protected def pmodModify(block: ElmBlock, source: Option[ConnectedPeer]): Unit = logTimed("pmodModify"){
