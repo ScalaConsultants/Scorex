@@ -31,7 +31,9 @@ case class ElmApp(elmConfig: ElmConfig) extends {
   override type PMOD = ElmBlock
   override type NVHT = ElmNodeViewHolder
 
-  override val nodeViewHolderRef = actorSystem.actorOf(Props(classOf[ElmNodeViewHolder], elmConfig))
+
+  val forger = new Forger(elmConfig)
+  override val nodeViewHolderRef = actorSystem.actorOf(Props(classOf[ElmNodeViewHolder], forger, elmConfig))
   override val localInterface = actorSystem.actorOf(Props(classOf[ElmLocalInterface], nodeViewHolderRef, elmConfig))
   override val nodeViewSynchronizer = actorSystem.actorOf(
     Props(classOf[NodeViewSynchronizer[P, TX, ElmSyncInfo, ElmSyncInfoSpec.type]],
@@ -50,8 +52,6 @@ case class ElmApp(elmConfig: ElmConfig) extends {
     typeOf[WalletApiRoute],
     typeOf[BlocktreeApiRoute]
   )
-
-  val forger = actorSystem.actorOf(Props(classOf[Forger], nodeViewHolderRef, elmConfig))
 
   override def run(): Unit = {
     log.debug(s"Available processors: ${Runtime.getRuntime.availableProcessors}")

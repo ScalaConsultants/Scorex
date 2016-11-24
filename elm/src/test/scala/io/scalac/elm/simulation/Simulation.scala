@@ -3,6 +3,7 @@ package io.scalac.elm.simulation
 import io.circe.generic.auto._
 import io.circe.syntax._
 import io.scalac.elm.config.SimConfig
+import io.scalac.elm.core.ElmNodeViewHolder.PaymentResponse
 import io.scalac.elm.network.{NetworkNode, NodeManager}
 import io.scalac.elm.simulation.Simulation.Payment
 import io.scalac.elm.util.ARM._
@@ -22,6 +23,9 @@ object Simulation {
 
 class Simulation private(simConfig: SimConfig) {
 
+  val genesisSyncAttempts = 20
+  val gesesisSyncInterval = 2000L
+
   private val log = LoggerFactory.getLogger(getClass)
 
   log.info(s"Random seed: ${simConfig.randomSeed}")
@@ -29,17 +33,18 @@ class Simulation private(simConfig: SimConfig) {
 
   private val nodeManager = new NodeManager(simConfig)
 
-  private val payments = mutable.ListBuffer.empty[Payment]
-
   private def run(): SimResults = {
     using(nodeManager.initializeNodes()) { nodes =>
 
+      awaitGenesisSynchronization(nodes, genesisSyncAttempts)
+
       log.info(s"Running simulation. ${simConfig.transactions.count} transactions to be made")
 
-      runTransactions(nodes)
-      awaitSynchronization(nodes, payments, simConfig.sync.attempts)
+      val payments = runTransactions(nodes)
+      val failed = awaitSynchronization(nodes, payments, simConfig.sync.attempts)
+      log.info(s"${failed.size} transactions failed")
 
-      val results = ResultCruncher(nodes, payments.toList)
+      val results = ResultCruncher(nodes, payments, failed, getMainchainTransactions(nodes, payments))
 
       log.info("Simulation finished")
       results
@@ -50,44 +55,51 @@ class Simulation private(simConfig: SimConfig) {
     }
   }
 
-  private def runTransactions(nodes: Seq[NetworkNode]): Unit = {
+  private def runTransactions(nodes: Seq[NetworkNode]): List[Payment] = {
     val progressFreq = 10
+    val payments = mutable.ListBuffer.empty[Payment]
 
     while (payments.size < simConfig.transactions.count) {
+
       val payment = makePayment(nodes)
       payment.foreach { p =>
         log.debug(s"New payment made: ${payment.asJson.noSpaces}")
         payments += p
       }
 
-      Thread.sleep(simConfig.transactions.interval.toMillis)
-
       if (payment.isDefined && (payments.size % progressFreq == 0))
         log.info(s"Made ${payments.size} out of ${simConfig.transactions.count} transactions")
+
+      Thread.sleep(simConfig.transactions.interval.toMillis)
     }
 
     log.info(s"Made all ${payments.size} transactions")
+    payments.toList
   }
 
   private def makePayment(nodes: Seq[NetworkNode]): Option[Payment] = {
-    val Seq(sender, recipient) = random.shuffle(nodes).take(2)
-    val funds = sender.walletFunds()
-    log.debug(s"Node ${sender.name} has $funds funds")
+    val sortedNodes =
+      random.shuffle(nodes)
+        .map { n =>
+          val funds = n.walletFunds()
+          log.debug(s"Node $n has $funds funds")
+          n -> funds
+        }
+        .sortBy(_._2).reverse.take(2).map(_._1)
 
-    if (funds > simConfig.transactions.minFunds) {
-      val amount = randomAmount(funds)
-      val fee = randomFee()
+    val sender = sortedNodes.head
+    val recipient = sortedNodes.last
 
-      val maybeId = sender.makePayment(recipient.publicKey, amount, fee)
-      maybeId.map(Payment(_, sender.publicKey, recipient.publicKey, amount, fee))
-    } else None
+    val ratio = randomRatio()
+    val fee = randomFee()
+    val PaymentResponse(maybeId, amount) = sender.makePayment(recipient.publicKey, ratio, fee, simConfig.transactions.minFunds)
+    maybeId.map(Payment(_, sender.publicKey, recipient.publicKey, amount, fee))
   }
 
-  private def randomAmount(funds: Long): Long = {
+  private def randomRatio(): Double = {
     val min = simConfig.transactions.minAmount
     val max = simConfig.transactions.maxAmount
-    val ratio = min + random.nextDouble() * (max - min)
-    math.max(1L, (funds * ratio).toLong)
+    min + random.nextDouble() * (max - min)
   }
 
   private def randomFee(): Long = {
@@ -96,25 +108,51 @@ class Simulation private(simConfig: SimConfig) {
     min + math.abs(random.nextLong()) % (max - min + 1)
   }
 
-  private def awaitSynchronization(nodes: Seq[NetworkNode], payments: Seq[Payment], attemptsLeft: Int): Unit = {
-    Thread.sleep(simConfig.sync.interval.toMillis)
-    log.info(s"Awaiting blocktree synchronization, attempts left: $attemptsLeft")
+  private def awaitGenesisSynchronization(nodes: Seq[NetworkNode], attemptsLeft: Int): Unit = {
+    log.info(s"Awaiting genesis block synchronization, attempts left: $attemptsLeft")
+    Thread.sleep(gesesisSyncInterval)
+    val sameLeaves = nodes.map(_.leaves().toSet).toSet.size == 1
+    if (!sameLeaves) {
+      if (attemptsLeft == 0) {
+        log.error("Nodes failed to synchronize genesis block")
+      } else {
+        awaitGenesisSynchronization(nodes, attemptsLeft - 1)
+      }
+    }
+  }
 
-    val txNotIncluded = payments.map(_.id).toSet diff nodes.head.mainchain().flatMap(_.txs).map(_.id.base58).toSet
-    val allTxs = txNotIncluded.isEmpty
+  private def awaitSynchronization(nodes: Seq[NetworkNode], payments: Seq[Payment], attemptsLeft: Int): Set[String] = {
+    log.info(s"Awaiting blocktree synchronization, attempts left: $attemptsLeft")
+    Thread.sleep(simConfig.sync.interval.toMillis)
+
+    val txsNotIncluded = payments.map(_.id).toSet diff nodes.head.mainchain().flatMap(_.txs).map(_.id.base58).toSet
+    val failed = nodes.flatMap(_.failed()).toSet
+    val onlyFailedNotIncluded = failed == txsNotIncluded
     val sameLeaves = nodes.map(_.leaves().toSet).toSet.size == 1
 
-    val inSync = allTxs && sameLeaves
+    val inSync = onlyFailedNotIncluded && sameLeaves
 
     if (!inSync) {
       if (attemptsLeft == 0) {
         val sameMainchains = nodes.map(_.mainchainIds()).toSet.size == 1
-        log.info(s"Number of transactions not included: ${txNotIncluded.size}. Mainchains are the same: $sameMainchains")
+        log.info(s"Number of transactions not included: ${txsNotIncluded.size}. Mainchains are the same: $sameMainchains. " +
+          s"Leaves are the same: $sameLeaves")
         log.error("Nodes failed to synchronize blocktrees!")
+        failed
       }
       else
         awaitSynchronization(nodes, payments, attemptsLeft - 1)
-    }
+    } else failed
   }
+
+  private def getFailedTransactions(nodes: Seq[NetworkNode]): Set[String] =
+    nodes.flatMap(_.failed()).toSet
+
+  private def getMainchainTransactions(nodes: Seq[NetworkNode], payments: Seq[Payment]): Set[String] = {
+    val mainchains = nodes.map(_.mainchain())
+    val nodesMainTxs = mainchains.map(_.flatMap(_.txs).map(_.id.base58).toSet)
+    nodesMainTxs.foldLeft(payments.map(_.id).toSet)(_ intersect _)
+  }
+
 
 }

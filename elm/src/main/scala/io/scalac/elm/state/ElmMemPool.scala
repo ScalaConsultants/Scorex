@@ -1,7 +1,5 @@
 package io.scalac.elm.state
 
-import cats.data.Xor
-import io.scalac.elm.state.ElmMemPool.TxValidationError
 import io.scalac.elm.transaction.{ElmBlock, ElmTransaction}
 import io.scalac.elm.util._
 import scorex.core.NodeViewComponentCompanion
@@ -9,10 +7,6 @@ import scorex.core.NodeViewModifier.ModifierId
 import scorex.core.transaction.MemoryPool
 
 import scala.util.Try
-
-object ElmMemPool {
-  case object TxValidationError extends Error
-}
 
 case class ElmMemPool(offchainTxs: Map[ByteKey, ElmTransaction] = Map.empty) extends MemoryPool[ElmTransaction, ElmMemPool] {
 
@@ -25,13 +19,10 @@ case class ElmMemPool(offchainTxs: Map[ByteKey, ElmTransaction] = Map.empty) ext
     ElmMemPool(offchainTxs -- block.txs.drop(1).map(_.id.key))
 
   /**
-    * Add transaction to pool if it's valid
+    * Add transaction to the pool
     */
-  def applyTx(transaction: ElmTransaction, minState: ElmMinState): Error Xor ElmMemPool =
-    if (minState.isValid(transaction))
-      Xor.right(ElmMemPool(offchainTxs + (transaction.id.key -> transaction)))
-    else
-      Xor.left(TxValidationError)
+  def applyTx(transaction: ElmTransaction): ElmMemPool =
+    ElmMemPool(offchainTxs + (transaction.id.key -> transaction))
 
   /**
     * get IDs from the argument that are not present in the MemPool

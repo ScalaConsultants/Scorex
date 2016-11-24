@@ -44,5 +44,6 @@
     <logger name="io.scalac.elm.simulation" level="INFO" />
     <logger name="io.scalac.elm.network" level="INFO" />
     <logger name="io.scalac.elm.core" level="OFF" />
+    <logger name="timelogger" level="OFF" />
 
 </configuration>

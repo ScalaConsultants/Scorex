@@ -10,14 +10,21 @@ class SimulationTest extends FlatSpec with Matchers {
 
   val simulationResults = Simulation.run()
 
-  println(simulationResults.payments.map(_.asJson.spaces4))
+  println("\nConfirmed transactions: " + simulationResults.payments.asJson.spaces4)
 
-  println(simulationResults.nodeResults.asJson.spaces4)
+  println("\nNodes results: " + simulationResults.nodeResults.asJson.spaces4)
 
 
   "Nodes in a simulation" should "accumulate expected funds" in {
     simulationResults.nodeResults.foreach { case (name, NodeResults(expected, actual, _, _)) =>
       assert(expected === actual, s"- funds for node: $name")
     }
+  }
+
+  "Mainchain transactions" should "be all non-failed payments" in {
+    val nonFailed = simulationResults.payments.map(_.id).toSet.diff(simulationResults.failedTxIds)
+    val mainchain = simulationResults.mainchainTxIds
+
+    assert(nonFailed === mainchain)
   }
 }

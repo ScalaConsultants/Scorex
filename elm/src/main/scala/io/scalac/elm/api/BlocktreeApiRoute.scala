@@ -11,12 +11,15 @@ import akka.util.Timeout
 import io.circe._
 import io.circe.syntax._
 import io.scalac.elm.history.ElmBlocktree
+import io.scalac.elm.state.{ElmMemPool, ElmMinState, ElmWallet}
 import io.scalac.elm.util.ByteKey
 import io.swagger.annotations._
 import scorex.core.NodeViewHolder
-import scorex.core.NodeViewHolder.CurrentView
+import scorex.core.NodeViewHolder.{CurrentView, GetCurrentView}
 import scorex.core.api.http.ApiRoute
 import scorex.core.settings.Settings
+
+import scala.concurrent.Future
 import scala.concurrent.duration._
 
 @Path("/blocktree")
@@ -31,7 +34,7 @@ class BlocktreeApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(implic
     Marshaller.StringMarshaller.wrap(MediaTypes.`application/json`)(_.spaces4)
 
   override lazy val route: Route = pathPrefix("blocktree") {
-    mainchain ~ leaves ~ block ~ chain ~ blocksOfChain
+    mainchain ~ leaves ~ block ~ chain ~ blocksOfChain ~ failed
   }
 
   @Path("/mainchain")
@@ -117,6 +120,28 @@ class BlocktreeApiRoute(val settings: Settings, nodeViewHolder: ActorRef)(implic
     }
   }
 
-  private def getBlocktree =
-    nodeViewHolder.ask(NodeViewHolder.GetCurrentView).mapTo[CurrentView[ElmBlocktree, _, _, _]].map(_.history)
+  @Path("/failed")
+  @ApiOperation(value = "get failed transactions", httpMethod = "GET")
+  @ApiResponses(Array(
+    new ApiResponse(code = 200, message = "list of failed transactions")
+  ))
+  def failed: Route = get {
+    path("failed") {
+      complete {
+        getView.map {
+          case CurrentView(history, minState, _, memPool) =>
+            history.mainChain.map(_.block)
+              .foldLeft(memPool)(_.applyBlock(_))
+              .offchainTxs.values.filterNot(minState.isValid)
+              .map(_.id.base58).toList.asJson
+        }
+      }
+    }
+  }
+
+  private def getView: Future[CurrentView[ElmBlocktree, ElmMinState, ElmWallet, ElmMemPool]] =
+    nodeViewHolder.ask(GetCurrentView).mapTo[CurrentView[ElmBlocktree, ElmMinState, ElmWallet, ElmMemPool]]
+
+  private def getBlocktree: Future[ElmBlocktree] =
+    getView.map(_.history)
 }

@@ -30,10 +30,12 @@ object ElmBlocktree {
     */
   implicit def nodeOrdering: Ordering[Node] = Ordering.by(n => (n.accumulatedScore, n.id.base58))
 
-  def zero(consensusConf: ConsensusConf): ElmBlocktree = {
-    val zeroNode = Node(ElmBlock.zero, Set.empty, 0, 0, 0)
-    ElmBlocktree(Map(zeroNode.id -> zeroNode), Set(zeroNode.id), consensusConf)
-  }
+
+  val zeroNode = Node(ElmBlock.zero, Set.empty, 0, 0, 0)
+
+  def zero(consensusConf: ConsensusConf): ElmBlocktree =
+    ElmBlocktree(Map(zeroNode.id -> zeroNode), Set(), consensusConf)
+
 
   case object BlockValidationError extends Error
 }
@@ -74,7 +76,7 @@ case class ElmBlocktree private(
       in <- coinstake.inputs
       txOut <- minState.get(in.closedBoxId)
       height <- txOut.height
-    } yield txOut.value * (parentHeight - height)
+    } yield txOut.value * (parentHeight - height + 1)
 
     partialScores.sum
   }
@@ -82,7 +84,7 @@ case class ElmBlocktree private(
   def mainChain: Stream[Node] =
     chainOf(maxLeaf.id)
 
-  override lazy val height: Int = maxLeaf.height
+  override def height: Int = if (leaves.isEmpty) 0 else maxLeaf.height
 
   /**
     * Traverse the tree from leaf to root to return a single chain (branch)
@@ -131,10 +133,10 @@ case class ElmBlocktree private(
     ElmSyncInfo(answer, leaves, blocks.keySet)
 
   def continuationIds(syncInfo: ElmSyncInfo): List[ByteKey] =
-    findContinuations(findStartingPoints(blocks.keySet, syncInfo.blocks))
+    findContinuations(findStartingPoints(leaves, syncInfo.blocks).toList, syncInfo.blocks)
 
   override def applicable(block: ElmBlock): Boolean =
-    blocks.contains(block.parentId) && !blocks.contains(block.id)
+    block.parentId.key == zeroNode.id || (blocks.contains(block.parentId) && !blocks.contains(block.id))
 
   /**
     * Find a leaf with the lowest score
@@ -159,10 +161,10 @@ case class ElmBlocktree private(
     */
   @tailrec
   private def limitBranches(n: Int, tree: ElmBlocktree): ElmBlocktree = {
-    if (leaves.size <= n)
+    if (tree.leaves.size <= n)
       tree
     else {
-      val updatedTree = removeBranch(minLeaf.id, tree)
+      val updatedTree = removeBranch(tree.minLeaf.id, tree)
       limitBranches(n, updatedTree)
     }
   }
@@ -175,10 +177,10 @@ case class ElmBlocktree private(
     if (tree.leaves.size == 1)
       tree
     else {
-      val leaf = blocks(leafId)
-      val parent = blocks(leaf.block.parentId.key)
+      val leaf = tree.blocks(leafId)
+      val parent = tree.blocks(leaf.parentId)
       val updatedParent = parent.removeChild(leafId)
-      val updatedTree = ElmBlocktree(blocks - leafId, tree.leaves - leafId, consensusConf)
+      val updatedTree = ElmBlocktree(tree.blocks - leafId, tree.leaves - leafId, consensusConf)
 
       if (updatedParent.children.nonEmpty)
         updatedTree
@@ -222,26 +224,27 @@ case class ElmBlocktree private(
       )
     }
 
-  private def findStartingPoints(theseBlocks: Set[ByteKey], otherBlocks: Set[ByteKey]): List[ByteKey] =
-    if (theseBlocks.isEmpty) Nil else {
-      val diff = theseBlocks.diff(otherBlocks)
+  private def findStartingPoints(theseLeaves: Set[ByteKey], otherBlocks: Set[ByteKey]): Set[ByteKey] =
+    if (theseLeaves.isEmpty) Set.empty else {
+      val diff = theseLeaves.diff(otherBlocks)
       val parents = diff.map(blocks).map(_.parentId)
       val found = parents.intersect(otherBlocks)
       val deeper = parents.diff(found)
-      found.toList ::: findStartingPoints(deeper, otherBlocks)
+      found ++ findStartingPoints(deeper, otherBlocks)
     }
 
-  private def findContinuations(nodeIds: List[ByteKey]): List[ByteKey] = {
+  private def findContinuations(nodeIds: List[ByteKey], otherBlocks: Set[ByteKey]): List[ByteKey] = {
     val directChildren = for {
       nodeId <- nodeIds
       node <- blocks.get(nodeId).toList
       childId <- node.children
+      if !otherBlocks(childId)
     } yield childId
 
     if (directChildren.isEmpty)
       Nil
     else
-      directChildren ::: findContinuations(directChildren)
+      directChildren ::: findContinuations(directChildren, otherBlocks)
   }
 
 

@@ -14,7 +14,6 @@ class NodeManager(simConfig: SimConfig) {
   private val initInterval = 1000
   private val initAttempts = 20
 
-
   def initializeNodes(): Seq[NetworkNode] = {
     val commonConf = ConfigFactory.load("simulation-common.conf")
 
@@ -23,14 +22,14 @@ class NodeManager(simConfig: SimConfig) {
   }
 
   def shutdownNodes(nodes: Seq[NetworkNode]): Unit =
-    nodes.foreach(_.app.stopAll())
+    nodes.foreach(_.stopAll())
 
 
   private def initializeNode(i: Int, commonConf: Config): NetworkNode = {
     val mergedConf = ConfigFactory.parseResources(s"simulation-node$i.conf").withFallback(commonConf)
     val app = ElmApp(ElmConfig.load(mergedConf))
-    val node = NetworkNode(app, simConfig)
-    node.app.run()
+    val node = new NetworkNode(app, simConfig)
+    node.run()
 
     waitForInitialization(node, initAttempts)
     node
