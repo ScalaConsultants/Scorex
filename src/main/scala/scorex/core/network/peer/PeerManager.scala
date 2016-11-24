@@ -16,7 +16,7 @@ import scala.util.Random
  * Must be singleton
  *
  */
-class PeerManager(settings: Settings, networkController: ActorRef) extends Actor with ScorexLogging {
+class PeerManager(settings: Settings) extends Actor with ScorexLogging {
 
   import PeerManager._
 
@@ -120,7 +120,7 @@ class PeerManager(settings: Settings, networkController: ActorRef) extends Actor
         randomPeer().foreach { address =>
           if (!connectedPeers.map(_._1.socketAddress).contains(address)) {
             connectingPeer = Some(address)
-            networkController ! NetworkController.ConnectTo(address)
+            sender ! NetworkController.ConnectTo(address)
           }
         }
       }
@@ -129,6 +129,9 @@ class PeerManager(settings: Settings, networkController: ActorRef) extends Actor
       log.info(s"Blacklist peer $peer")
       peerDatabase.blacklistPeer(peer)
   }: Receive) orElse peerListOperations orElse apiInterface orElse peerCycle
+
+  override def postStop(): Unit =
+    peerDatabase.close()
 }
 
 object PeerManager {
