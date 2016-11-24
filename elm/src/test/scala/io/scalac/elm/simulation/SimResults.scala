@@ -10,5 +10,5 @@ object SimResults {
 case class SimResults(nodeResults: Map[String, NodeResults], payments: Seq[Payment], failedTxIds: Set[String],
   mainchainTxIds: Set[String]) {
 
-  def successfulPayments = payments.filter(p => mainchainTxIds(p.id))
+  def successfulPayments: Seq[Payment] = payments.filter(p => mainchainTxIds(p.id))
 }

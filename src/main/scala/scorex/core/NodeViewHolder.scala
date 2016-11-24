@@ -41,9 +41,9 @@ trait NodeViewHolder[P <: Proposition, TX <: Transaction[P], PMOD <: PersistentN
 
   protected def logTimed[R](desc: String)(op: => R): R = {
     val t0 = System.currentTimeMillis()
-    timeLogger.info(s"Starting operation [$desc] ...")
+    timeLogger.debug(s"Starting operation [$desc] ...")
     val res = op
-    timeLogger.info(s"Operation [$desc] took ${System.currentTimeMillis() - t0} ms")
+    timeLogger.debug(s"Operation [$desc] took ${System.currentTimeMillis() - t0} ms")
     res
   }
 

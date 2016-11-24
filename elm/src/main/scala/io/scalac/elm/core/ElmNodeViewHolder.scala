@@ -56,9 +56,6 @@ class ElmNodeViewHolder(forger: Forger, elmConfig: ElmConfig) extends {
   protected val log = LoggerFactory.getLogger(s"${getClass.getName}.${elmConfig.node.name}")
   protected val timeLogger = LoggerFactory.getLogger("timelogger." + elmConfig.node.name)
 
-  val seenTxs = mutable.Set.empty[String]
-  def printSeenTxs: String = seenTxs.mkString("\n")
-
   nodeView = genesisState
 
   scheduleForge()
@@ -134,7 +131,6 @@ class ElmNodeViewHolder(forger: Forger, elmConfig: ElmConfig) extends {
 
     history().append(block, parentState.minState) match {
       case Xor.Right(newBlocktree) =>
-        seenTxs ++= block.txs.drop(1).map(_.id.base58)
         updateState(newBlocktree, block)
         log.info(s"Persistent modifier ${Base58.encode(block.id)} applied successfully")
         notifySubscribers(EventType.SuccessfulPersistentModifier, SuccessfulModification[P, TX, PMOD](block, source))
@@ -147,7 +143,6 @@ class ElmNodeViewHolder(forger: Forger, elmConfig: ElmConfig) extends {
 
   override def txModify(tx: ElmTransaction, source: Option[ConnectedPeer]): Unit = logTimed("txModify"){
     val updPool = memoryPool().applyTx(tx)
-    seenTxs += tx.id.base58
 
     if (minimalState().isValid(tx)) {
       val updWallet = vault().scanOffchain(tx)
